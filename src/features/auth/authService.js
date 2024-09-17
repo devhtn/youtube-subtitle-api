@@ -1,19 +1,20 @@
 import bcrypt from 'bcrypt'
+import { OAuth2Client } from 'google-auth-library'
 import jwt from 'jsonwebtoken'
 
 import MyError from '~/utils/MyError'
 
 import env from '~/config/env'
-import adminModel from '~/models/adminModel'
+import userModel from '~/models/userModel'
 
-const adminRegister = async (body) => {
-  const { username, password } = body
-  const isExist = await adminModel.findOne({ username })
+const adminRegister = async (adminInfo) => {
+  const { username, password } = adminInfo
+  const isExist = await userModel.findOne({ username })
   if (isExist) throw new MyError('username already used', 409)
   const hashedPassword = await bcrypt.hash(password, 10)
-  body.password = hashedPassword
-  const user = new adminModel()
-  Object.assign(user, body)
+  adminInfo.password = hashedPassword
+  const user = new userModel()
+  Object.assign(user, adminInfo)
   await user.save()
 
   // custom returned results
@@ -21,9 +22,9 @@ const adminRegister = async (body) => {
   return user
 }
 
-const adminLogin = async (body) => {
-  const { username, password } = body
-  const user = await adminModel.findOne(
+const adminLogin = async (userInfo) => {
+  const { username, password } = userInfo
+  const user = await userModel.findOne(
     { username },
     { createdAt: 0, updatedAt: 0 }
   )
@@ -33,18 +34,52 @@ const adminLogin = async (body) => {
   const isMatch = await bcrypt.compare(password, user.password)
   if (!isMatch) throw new MyError('password is wrong', 401)
 
-  const payload = { id: user._id, username: user.username, role: user.role }
-  const token = jwt.sign(payload, env.TOKEN_SECRET, { expiresIn: '1h' })
+  const payload = { id: user._id, role: user.role }
+  const token = jwt.sign(payload, env.TOKEN_SECRET, { expiresIn: '30d' })
   // custom returned results
-  const userObject = user.toObject()
-  delete userObject.id
-  delete userObject.password
-  delete userObject.role
-  return { token, user: userObject }
+  const userReponse = {
+    username
+  }
+  return { token, user: userReponse }
+}
+
+const googleLogin = async (credential) => {
+  const client = new OAuth2Client(env.GOOGLE_CLIENT_ID)
+  const ticket = await client.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID
+  })
+  if (!ticket) throw new MyError('Lỗi xác thực, vui lòng thử lại', 401)
+
+  const payload = ticket.getPayload()
+  const { sub, email, name, picture } = payload
+  let user = await userModel.findOne({ googleId: sub })
+
+  if (!user) {
+    user = new userModel({
+      googleId: sub,
+      email,
+      name,
+      picture
+    })
+    await user.save()
+  }
+
+  const token = jwt.sign({ id: user._id, role: user.role }, env.TOKEN_SECRET, {
+    expiresIn: '30d'
+  })
+
+  const userResponse = {
+    name: user.name,
+    picture: user.picture
+  }
+
+  return { token, user: userResponse }
 }
 
 const authService = {
   adminLogin,
-  adminRegister
+  adminRegister,
+  googleLogin
 }
 export default authService

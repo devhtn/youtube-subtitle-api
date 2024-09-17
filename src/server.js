@@ -2,11 +2,14 @@ import 'express-async-errors'
 
 import cors from 'cors'
 import express from 'express'
+import passport from 'passport'
 
 import connectDB from './config/db'
 import env from './config/env'
 import handleError from './middlewares/handleError'
-import routerV1 from './routers/v1'
+import routerV1 from './router/v1'
+
+import '~/config/passport'
 
 const SERVER = () => {
   const app = express()
@@ -14,7 +17,8 @@ const SERVER = () => {
   app.use(cors())
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
-
+  // auth
+  app.use(passport.initialize())
   // router
   app.use('/v1', routerV1)
 
@@ -26,4 +30,9 @@ const SERVER = () => {
   })
 }
 
-connectDB().then(() => SERVER())
+connectDB()
+  .then(() => SERVER())
+  .catch((err) => {
+    console.log({ err })
+    process.exit(1)
+  })

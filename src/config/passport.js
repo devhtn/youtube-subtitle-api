@@ -2,7 +2,7 @@ import passport from 'passport'
 import { ExtractJwt, Strategy as JwtStrategy } from 'passport-jwt'
 
 import env from '~/config/env'
-import adminModel from '~/models/adminModel'
+import userModel from '~/models/userModel'
 
 // JWT Strategy: Xác thực các request với JWT token
 const opts = {
@@ -11,9 +11,10 @@ const opts = {
 }
 
 passport.use(
+  'passport-jwt',
   new JwtStrategy(opts, async (jwt_payload, done) => {
     try {
-      const user = await adminModel.findById(jwt_payload.id)
+      const user = await userModel.findById(jwt_payload.id)
       if (user) {
         return done(null, user)
       } else {
@@ -25,4 +26,3 @@ passport.use(
   })
 )
 
-export default passport
