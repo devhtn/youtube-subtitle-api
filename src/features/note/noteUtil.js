@@ -1,4 +1,5 @@
 import axios from 'axios'
+import nlp from 'compromise'
 import lemmatizer from 'node-lemmatizer'
 import pos from 'pos'
 import tokenizer from 'wink-tokenizer'
@@ -67,84 +68,145 @@ const getInfoVideo = async (link) => {
   }
 }
 
-const splitContractions = (sentence) => {
-  const contractions = []
-
-  // Regular expression to match contractions (words containing ')
-  const contractionRegex = /\b\w+'(?:\w+)?\b/g
-
-  // Extract all contractions and store them in the array
-  let match
-  while ((match = contractionRegex.exec(sentence)) !== null) {
-    contractions.push(match[0].toLowerCase())
-  }
-
-  // Remove the contractions from the original sentence
-  const newSentence = sentence
-    .replace(contractionRegex, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  return { contractions, newSentence }
-}
-
-const getLemmatizedSentence = (sentence) => {
-  const { contractions, newSentence } = splitContractions(sentence)
-  const myTokenizer = tokenizer()
-  const tokens = myTokenizer.tokenize(newSentence)
-  const newWords = tokens
-    .filter((el) => el.tag === 'word')
-    .map((el) => el.value)
-  const tagger = new pos.Tagger()
-  const taggedWords = tagger.tag(newWords)
-  const lemmatizedWords = []
-  taggedWords.forEach((taggedWord) => {
-    const word = taggedWord[0].toLowerCase()
-    const tag = taggedWord[1]
-    let lemma
-    switch (tag) {
-      case 'NNP':
-        break
-      case 'VBD': // Verb, past tense
-      case 'VBG': // Verb, gerund/present participle
-      case 'VBN': // Verb, past participle
-      case 'VBP': // Verb, non-3rd person singular present
-      case 'VBZ': // Verb, 3rd person singular present
-        lemma = lemmatizer.only_lemmas(word.toLowerCase(), 'verb')
-        break
-      case 'NNS': // Plural noun
-        lemma = lemmatizer.only_lemmas(word.toLowerCase(), 'noun')
-        break
-      case 'JJR': // Adjective, comparative
-      case 'JJS': // Adjective, superlative
-        lemma = lemmatizer.only_lemmas(word.toLowerCase(), 'adj')
-        break
-      default:
-        lemma = [word] // Không thay đổi từ nếu không phải danh từ, động từ, tính từ, hoặc trạng từ
-    }
-    if (lemma) lemmatizedWords.push(...lemma)
+const parseSub = (text) => {
+  const textTags = nlp(text).out('tags')
+  let mergedTextTags = textTags.reduce((acc, obj) => {
+    Object.keys(obj).forEach((key) => {
+      acc[key] = obj[key] // Ghi đè nếu thuộc tính đã tồn tại
+    })
+    return acc
+  }, {})
+  mergedTextTags = Object.entries(mergedTextTags)
+  const cleanTags = mergedTextTags.filter((el) => {
+    return /^[a-zA-Z0-9']+$/.test(el[0])
   })
 
-  return { lemmatizedWords, contractions }
+  // Xử lý để lấy dictationWords
+  const arrayWords = [
+    ...new Set(text.toLowerCase().replace(/\s+/g, ' ').split(' '))
+  ]
+  const dictationWords = []
+  arrayWords.forEach((word) => {
+    // Tạo biến cleanWord chỉ một lần
+    const cleanWord = word
+      .replace(/^[^a-zA-Z0-9]+/, '')
+      .replace(/[^a-zA-Z0-9]+$/, '')
+
+    if (/^[a-zA-Z0-9']+$/.test(cleanWord)) {
+      // Tìm kiếm trong sentenceTags
+      const found = cleanTags.find((el) => el[0] === cleanWord)
+
+      // Kiểm tra nếu là dạng từ viết tắt (contraction)
+      const isContraction = /\b\w+'\w+\b/.test(cleanWord)
+
+      if (isContraction) {
+        if (!found || found[1].includes('Possessive')) {
+          if (found) {
+            const possTag = Object.entries(
+              nlp(cleanWord.split("'")[0]).out('tags')[0]
+            )[0]
+            if (!possTag[1].includes('ProperNoun')) {
+              dictationWords.push(cleanWord)
+            }
+          } else {
+            dictationWords.push(cleanWord)
+          }
+        }
+      } else if (found && !found[1].includes('ProperNoun')) {
+        dictationWords.push(cleanWord)
+      }
+    }
+  })
+  const jsonDictationWords = dictationWords.map((item) => ({
+    word: item
+  }))
+
+  // Xử lý để lấy lemmatizedWords
+  const tagWords = []
+  const removeTags = new Set() // Sử dụng Set để kiểm tra sự tồn tại nhanh hơn
+
+  cleanTags.forEach((tag) => {
+    const word = tag[0]
+    const tags = tag[1]
+
+    // Kiểm tra xem từ có chứa dấu ' hay không
+    if (/\b\w+'\w+\b/.test(word)) {
+      if (tags.includes('Possessive')) {
+        const possTag = Object.entries(
+          nlp(word.split("'")[0]).out('tags')[0]
+        )[0]
+        // Kiểm tra không phải danh từ riêng
+        if (!possTag[1].includes('ProperNoun')) {
+          tagWords.push(possTag)
+        }
+        removeTags.add(tag[0]) // Thêm vào Set
+      } else {
+        removeTags.add(tag[0])
+      }
+    } else if (/^[a-zA-Z]+$/.test(word)) {
+      // Kiểm tra chỉ chứa chữ cái
+      if (!tags.includes('ProperNoun')) {
+        tagWords.push(tag)
+      }
+    }
+  })
+
+  // Lọc các tagWords bằng cách kiểm tra trong removeTags
+  const cleanTagWords = tagWords.filter((tag) => !removeTags.has(tag[0]))
+
+  const lemmatizedWords = []
+  cleanTagWords.forEach((tagWord) => {
+    const word = tagWord[0]
+    const tags = tagWord[1] // tags là array chứa nhiều loại từ
+    let lemma
+
+    if (tags.includes('Verb')) {
+      // Nếu tags chứa 'Verb'
+      lemma = lemmatizer.only_lemmas(word, 'verb')
+    } else if (tags.includes('Noun')) {
+      // Nếu tags chứa 'Noun'
+      lemma = lemmatizer.only_lemmas(word, 'noun')
+    } else if (tags.includes('Adjective')) {
+      // Nếu tags chứa 'Adjective'
+      lemma = lemmatizer.only_lemmas(word, 'adj')
+    } else {
+      lemma = [word] // Giữ nguyên từ nếu không phải là động từ, danh từ hoặc tính từ
+    }
+
+    if (lemma.length > 1) {
+      // Nếu lemma có 2 phần tử, push dạng mảng chứa 2 phần tử
+      lemmatizedWords.push(lemma)
+    } else {
+      // Nếu chỉ có 1 phần tử, push phần tử đó
+      lemmatizedWords.push(...lemma)
+    }
+  })
+
+  return { lemmatizedWords, jsonDictationWords, lengthWords: arrayWords.length }
 }
 
 const calcWordMatch = (words, wordList) => {
-  const setWordList = new Set(wordList.map((word) => word.toLowerCase()))
+  const setWordList = new Set(wordList.map((word) => word))
 
   let matchCount = 0
   words.forEach((word) => {
-    if (setWordList.has(word.toLowerCase())) {
-      matchCount++
+    if (Array.isArray(word)) {
+      // Nếu phần tử là một mảng, kiểm tra từng từ trong mảng
+      const hasMatch = word.some((el) => setWordList.has(el))
+      if (hasMatch) {
+        matchCount++
+      }
     }
+    // Nếu phần tử là chuỗi đơn
+    else if (setWordList.has(word.toLowerCase())) matchCount++
   })
 
-  // Tính phần trăm
   return matchCount
 }
 
 const noteUtil = {
   getInfoVideo,
-  getLemmatizedSentence,
+  parseSub,
   calcWordMatch
 }
 

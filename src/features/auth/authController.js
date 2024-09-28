@@ -1,15 +1,14 @@
 import authService from './authService'
 
-const adminRegister = async (req, res) => {
-  const userInfo = req.body
-  // role admin
-  userInfo.role = 'admin'
-  const user = await authService.adminRegister(userInfo)
+const register = async (req, res) => {
+  const info = req.body
+  console.log(info)
+  const user = await authService.register(info)
   res.status(201).json(user)
 }
-const adminLogin = async (req, res) => {
+const login = async (req, res) => {
   const userInfo = req.body
-  const login = await authService.adminLogin(userInfo)
+  const login = await authService.login(userInfo)
   return res.status(201).json(login)
 }
 
@@ -21,8 +20,8 @@ const googleLogin = async (req, res) => {
 }
 
 const authController = {
-  adminRegister,
-  adminLogin,
+  register,
+  login,
   googleLogin
 }
 

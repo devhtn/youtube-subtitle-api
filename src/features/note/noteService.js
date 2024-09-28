@@ -1,64 +1,104 @@
 import MyError from '~/utils/MyError'
 
 import noteUtil from './noteUtil'
+import dictationModel from '~/models/dictationModel'
 import noteModel from '~/models/noteModel'
 import wordListModel from '~/models/wordListModel'
 
 const checkVideo = async (linkVideo) => {
   const videoWords = []
-  const contractionsVideo = []
 
   const videoInfo = await noteUtil.getInfoVideo(linkVideo)
 
-  let sumAvgSpeedSentence = 0
+  let sumAvgSpeed = 0
   videoInfo.subs.forEach((el) => {
-    const { lemmatizedWords, contractions } = noteUtil.getLemmatizedSentence(
-      el.text
-    )
+    const { lemmatizedWords, jsonDictationWords, lengthWords } =
+      noteUtil.parseSub(el.text)
+    el.dictationWords = jsonDictationWords
     videoWords.push(...lemmatizedWords)
-    contractionsVideo.push(...contractions)
-    sumAvgSpeedSentence +=
-      (lemmatizedWords.length + contractions.length) / (el.end - el.start)
+    const duration = el.end - el.start
+    if (duration > 0) {
+      sumAvgSpeed += lengthWords / duration
+    }
   })
+  videoInfo.avgSpeed = (sumAvgSpeed / videoInfo.subs.length).toFixed(2)
 
-  videoInfo.avgSpeed = (sumAvgSpeedSentence / videoInfo.subs.length).toFixed(2)
+  const uniqWords = Array.from(new Set(videoWords))
+  videoInfo.countWords = uniqWords.length
 
-  const uniqVideoWords = Array.from(new Set(videoWords))
-  const uniqVideoContractions = Array.from(new Set(contractionsVideo))
-
-  videoInfo.countWords = uniqVideoWords.length + uniqVideoContractions.length
   const wordLists = await wordListModel.find({})
-  videoInfo.checkList = wordLists.map((el) => {
+  const checkList = wordLists.map((el) => {
     return {
       name: el.name,
       desc: el.desc,
-      match:
-        noteUtil.calcWordMatch(uniqVideoWords, el.words) +
-        uniqVideoContractions.length
+      match: noteUtil.calcWordMatch(uniqWords, el.words)
     }
   })
+  videoInfo.checkList = checkList
 
   return videoInfo
 }
 
-const addNote = async (videoInfo, user) => {
-  const isExist = await noteModel.findOne({
-    videoId: videoInfo.videoId,
-    userId: user.id
+const addNote = async (info, user) => {
+  let note = await noteModel.findOne({
+    videoId: info.videoId
   })
-  if (isExist) throw new Error('Bạn đã thêm video này trước đó', 409)
-  const note = new noteModel(videoInfo)
-  note.userId = user.id
-  await note.save()
-  return note.id
+  if (note) {
+    const dictation = dictationModel
+      .findOne({
+        noteId: note.id,
+        userId: user.id
+      })
+      .lean()
+
+    if (!dictation) throw new Error('Video đã được bạn thêm vào trước đó')
+    await dictationModel.create({
+      userId: user._id,
+      noteId: note._id,
+      subs: note.subs,
+      countWords: note.countWords
+    })
+  } else {
+    info.userId = user.id
+    note = await noteModel.create(info)
+    await dictationModel.create({
+      userId: user._id,
+      noteId: note.id,
+      subs: note.subs,
+      countWords: note.countWords
+    })
+  }
+
+  return note.videoId
 }
 
-const getNote = async (id, userId) => {
-  return await noteModel.findOne({ _id: id, userId })
+const getDictation = async (videoId, userId) => {
+  const note = await noteModel.findOne({ videoId })
+  if (!note) throw new MyError('video id không tồn tại')
+  return await dictationModel.findOne({ noteId: note._id, userId })
+}
+
+const updateSegment = async (segment, dictationId, countCompletedWords = 0) => {
+  const updateFields = {
+    $set: {
+      'subs.$': segment // Cập nhật toàn bộ segment đó trong subs
+    }
+  }
+
+  if (countCompletedWords > 0) {
+    updateFields.$inc = { countCompletedWords } // Tăng giá trị của countCompletedWords
+  }
+
+  return await dictationModel.findOneAndUpdate(
+    { _id: dictationId, 'subs._id': segment.id },
+    updateFields,
+    { new: true }
+  )
 }
 
 const noteService = {
-  getNote,
+  updateSegment,
+  getDictation,
   checkVideo,
   addNote
 }

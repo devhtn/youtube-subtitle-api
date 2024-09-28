@@ -2,80 +2,25 @@ import mongoose, { Schema } from 'mongoose'
 
 import modelConfig from './modelConfig'
 
-const noteSchema = new Schema(
+const dictationSchema = new Schema(
   {
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true
     },
-    title: {
-      type: String,
-      required: true
-    },
-    videoId: {
-      type: String,
-      required: true
-    },
-    category: {
-      type: String,
-      require: true
-    },
-    duration: {
-      type: String,
+    noteId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Note',
       required: true
     },
     countWords: {
       type: Number,
       required: true
     },
-    checkList: [
-      {
-        name: {
-          type: String,
-          required: true
-        },
-        desc: {
-          type: String,
-          required: true
-        },
-        match: {
-          type: Number,
-          required: true
-        }
-      }
-    ],
-    thumbnails: {
-      type: [
-        {
-          url: {
-            type: String,
-            required: true
-          },
-          width: {
-            type: Number,
-            required: true
-          },
-          height: {
-            type: String,
-            required: true
-          }
-        }
-      ]
-    },
-    chapters: {
-      type: [
-        {
-          title: {
-            type: String,
-            required: true
-          },
-          start_time: {
-            type: Number,
-            required: true
-          }
-        }
-      ]
+    countCompletedWords: {
+      type: Number,
+      default: 0
     },
     subs: {
       type: [
@@ -92,12 +37,20 @@ const noteSchema = new Schema(
             type: String,
             required: true // text là bắt buộc
           },
+          note: {
+            type: String
+          },
           dictationWords: {
             type: [
               {
                 word: {
                   type: String,
                   required: true
+                },
+                isCompleted: {
+                  type: Boolean,
+                  required: true,
+                  default: false
                 }
               }
             ],
@@ -121,6 +74,6 @@ const noteSchema = new Schema(
   modelConfig
 )
 
-noteSchema.index({ userId: 1, videoId: 1 }, { unique: true })
-const noteModel = mongoose.model('note', noteSchema)
-export default noteModel
+dictationSchema.index({ userId: 1, noteId: 1 }, { unique: true })
+const dictationModel = mongoose.model('dictation', dictationSchema)
+export default dictationModel

@@ -7,14 +7,14 @@ import MyError from '~/utils/MyError'
 import env from '~/config/env'
 import userModel from '~/models/userModel'
 
-const adminRegister = async (adminInfo) => {
-  const { username, password } = adminInfo
+const register = async (info) => {
+  const { username, password } = info
   const isExist = await userModel.findOne({ username })
   if (isExist) throw new MyError('username already used', 409)
   const hashedPassword = await bcrypt.hash(password, 10)
-  adminInfo.password = hashedPassword
+  info.password = hashedPassword
   const user = new userModel()
-  Object.assign(user, adminInfo)
+  Object.assign(user, info)
   await user.save()
 
   // custom returned results
@@ -22,7 +22,7 @@ const adminRegister = async (adminInfo) => {
   return user
 }
 
-const adminLogin = async (userInfo) => {
+const login = async (userInfo) => {
   const { username, password } = userInfo
   const user = await userModel.findOne(
     { username },
@@ -78,8 +78,8 @@ const googleLogin = async (credential) => {
 }
 
 const authService = {
-  adminLogin,
-  adminRegister,
+  login,
+  register,
   googleLogin
 }
 export default authService

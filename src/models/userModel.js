@@ -2,26 +2,26 @@ import mongoose, { Schema } from 'mongoose'
 
 import modelConfig from './modelConfig'
 
-const adminSchema = new Schema(
+const userSchema = new Schema(
   {
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      required: true
+    },
     username: {
       type: String,
-      required: function () {
-        return this.role === 'admin' // Bắt buộc nếu role là admin
-      },
       trim: true
     },
     password: {
       type: String,
       required: function () {
-        return this.role === 'admin' // Bắt buộc nếu role là admin
+        return !!this.username
       }
     },
     googleId: {
-      type: String,
-      required: function () {
-        return this.role === 'user' // Bắt buộc nếu role là user
-      }
+      type: String
     },
     role: {
       type: String,
@@ -31,18 +31,19 @@ const adminSchema = new Schema(
     name: {
       type: String
     },
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true
-    },
     picture: {
       type: String
     }
   },
   modelConfig
 )
-const userModel = mongoose.model('user', adminSchema)
+userSchema.path('username').validate(function () {
+  if (!this.googleId && !this.username) {
+    return false
+  }
+  return true
+}, 'User must have either a googleId or a username.')
+const userModel = mongoose.model('user', userSchema)
 // email is only unique if it has a value
 // const createIndexes = async () => {
 //   try {

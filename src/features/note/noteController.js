@@ -15,15 +15,27 @@ const addNote = async (req, res) => {
   return res.status(201).json(addNote)
 }
 
-const getNote = async (req, res) => {
-  const { id } = req.params
+const getDictation = async (req, res) => {
+  const videoId = req.params.id
   const userId = req.user.id
-  const note = await noteService.getNote(id, userId)
-  return res.status(201).json(note)
+  const dictation = await noteService.getDictation(videoId, userId)
+  return res.status(201).json(dictation)
+}
+
+const updateSegment = async (req, res) => {
+  const { id, segment, countCompletedWords } = req.body
+  const dictationId = id
+  const dictation = await noteService.updateSegment(
+    segment,
+    dictationId,
+    countCompletedWords
+  )
+  return res.status(201).json(dictation)
 }
 
 const noteController = {
-  getNote,
+  updateSegment,
+  getDictation,
   checkVideo,
   addNote
 }

@@ -21,11 +21,18 @@ noteRoute
     noteController.addNote
   )
 noteRoute
-  .route('/get-note/:id')
+  .route('/get-dictation/:id')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
     authorize('user'),
-    noteController.getNote
+    noteController.getDictation
+  )
+noteRoute
+  .route('/update-segment')
+  .patch(
+    passport.authenticate('passport-jwt', { session: false }),
+    authorize('user'),
+    noteController.updateSegment
   )
 
 export default noteRoute
