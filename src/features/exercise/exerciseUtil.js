@@ -8,6 +8,28 @@ import ytdl from 'ytdl-core'
 
 import MyError from '~/utils/MyError'
 
+function getVideoId(url) {
+  // Định nghĩa các biểu thức chính quy để khớp các dạng URL của YouTube
+  const regexStandard =
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/
+  const regexShort = /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/
+
+  // Thử khớp với đường dẫn chuẩn
+  const matchStandard = url.match(regexStandard)
+  if (matchStandard && matchStandard[1]) {
+    return matchStandard[1]
+  }
+
+  // Thử khớp với đường dẫn rút gọn
+  const matchShort = url.match(regexShort)
+  if (matchShort && matchShort[1]) {
+    return matchShort[1]
+  }
+
+  // Nếu không khớp, trả về null
+  return null
+}
+
 const getInfoVideo = async (link) => {
   // Lấy thông tin videoInfo
   const video = await ytdl.getInfo(link)
@@ -40,10 +62,11 @@ const getInfoVideo = async (link) => {
           reject('Error parsing XML: ' + err)
         } else {
           const subtitles = result.transcript.text
-          const newSubs = []
+          const segments = []
           for (let i = 0; i < subtitles.length; i++) {
             const text = subtitles[i]._.replace(/\n/g, ' ')
               .replace(/\s?\(.*?\)/g, '')
+              .replace(/\s?\[.*?\]/g, '')
               .replace(/&#39;/g, "'")
               .replace(/&quot;/g, '"')
               .trim()
@@ -52,13 +75,13 @@ const getInfoVideo = async (link) => {
             const start = subtitles[i].$.start
             const dur = subtitles[i].$.dur
             const end = (parseFloat(start) + parseFloat(dur)).toFixed(3)
-            newSubs.push({
+            segments.push({
               start,
               end,
               text
             })
           }
-          videoInfo.subs = newSubs
+          videoInfo.segments = segments
           resolve(videoInfo) // Trả về JSON
         }
       })
@@ -82,9 +105,8 @@ const parseSub = (text) => {
   })
 
   // Xử lý để lấy dictationWords
-  const arrayWords = [
-    ...new Set(text.toLowerCase().replace(/\s+/g, ' ').split(' '))
-  ]
+  const allArrayWords = text.toLowerCase().replace(/\s+/g, ' ').split(' ')
+  const arrayWords = [...new Set(allArrayWords)]
   const dictationWords = []
   arrayWords.forEach((word) => {
     // Tạo biến cleanWord chỉ một lần
@@ -117,9 +139,6 @@ const parseSub = (text) => {
       }
     }
   })
-  const jsonDictationWords = dictationWords.map((item) => ({
-    word: item
-  }))
 
   // Xử lý để lấy lemmatizedWords
   const tagWords = []
@@ -182,7 +201,7 @@ const parseSub = (text) => {
     }
   })
 
-  return { lemmatizedWords, jsonDictationWords, lengthWords: arrayWords.length }
+  return { lemmatizedWords, dictationWords, lengthWords: allArrayWords.length }
 }
 
 const calcWordMatch = (words, wordList) => {
@@ -204,10 +223,11 @@ const calcWordMatch = (words, wordList) => {
   return matchCount
 }
 
-const noteUtil = {
+const exerciseUtil = {
+  getVideoId,
   getInfoVideo,
   parseSub,
   calcWordMatch
 }
 
-export default noteUtil
+export default exerciseUtil

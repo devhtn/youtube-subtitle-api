@@ -18,8 +18,7 @@ const register = async (info) => {
   await user.save()
 
   // custom returned results
-  user.password = undefined
-  return user
+  return user.id
 }
 
 const login = async (userInfo) => {
@@ -37,10 +36,10 @@ const login = async (userInfo) => {
   const payload = { id: user._id, role: user.role }
   const token = jwt.sign(payload, env.TOKEN_SECRET, { expiresIn: '30d' })
   // custom returned results
-  const userReponse = {
-    username
-  }
-  return { token, user: userReponse }
+  // eslint-disable-next-line no-unused-vars
+  const { password: removedPassword } = user.toObject()
+
+  return token
 }
 
 const googleLogin = async (credential) => {
@@ -69,12 +68,7 @@ const googleLogin = async (credential) => {
     expiresIn: '30d'
   })
 
-  const userResponse = {
-    name: user.name,
-    picture: user.picture
-  }
-
-  return { token, user: userResponse }
+  return token
 }
 
 const authService = {

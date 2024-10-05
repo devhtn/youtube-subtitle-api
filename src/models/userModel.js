@@ -43,7 +43,7 @@ userSchema.path('username').validate(function () {
   }
   return true
 }, 'User must have either a googleId or a username.')
-const userModel = mongoose.model('user', userSchema)
+const userModel = mongoose.model('User', userSchema)
 // email is only unique if it has a value
 // const createIndexes = async () => {
 //   try {

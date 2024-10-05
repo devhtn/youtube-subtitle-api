@@ -1,7 +1,7 @@
 import express from 'express'
 
 import authRoute from '~/features/auth/authRoute'
-import noteRoute from '~/features/note/noteRoute'
+import exerciseRoute from '~/features/exercise/exerciseRoute'
 
 const routerV1 = express.Router()
 
@@ -10,6 +10,6 @@ routerV1.get('/status', (req, res) => {
 })
 
 routerV1.use('/auth', authRoute)
-routerV1.use('/note', noteRoute)
+routerV1.use('/exercise', exerciseRoute)
 
 export default routerV1

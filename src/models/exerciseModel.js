@@ -2,18 +2,31 @@ import mongoose, { Schema } from 'mongoose'
 
 import modelConfig from './modelConfig'
 
-const noteSchema = new Schema(
+const exerciseSchema = new Schema(
   {
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true
     },
-    title: {
-      type: String,
-      required: true
-    },
     videoId: {
+      type: String,
+      required: true,
+      unique: true
+    },
+    countUsers: {
+      type: Number,
+      defautl: 0
+    },
+    firstUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    isPublic: {
+      type: Boolean,
+      default: false
+    },
+    title: {
       type: String,
       required: true
     },
@@ -25,7 +38,15 @@ const noteSchema = new Schema(
       type: String,
       required: true
     },
-    countWords: {
+    totalDictationWords: {
+      type: Number,
+      required: true
+    },
+    totalDictationUniqWords: {
+      type: Number,
+      required: true
+    },
+    avgSpeed: {
       type: Number,
       required: true
     },
@@ -77,7 +98,7 @@ const noteSchema = new Schema(
         }
       ]
     },
-    subs: {
+    segments: {
       type: [
         {
           start: {
@@ -93,14 +114,7 @@ const noteSchema = new Schema(
             required: true // text là bắt buộc
           },
           dictationWords: {
-            type: [
-              {
-                word: {
-                  type: String,
-                  required: true
-                }
-              }
-            ],
+            type: [String],
             validate: {
               validator: function (array) {
                 return array.length > 0 // Kiểm tra phải có ít nhất 1 phần tử
@@ -121,6 +135,6 @@ const noteSchema = new Schema(
   modelConfig
 )
 
-noteSchema.index({ userId: 1, videoId: 1 }, { unique: true })
-const noteModel = mongoose.model('note', noteSchema)
-export default noteModel
+exerciseSchema.index({ userId: 1, videoId: 1 }, { unique: true })
+const exerciseModel = mongoose.model('Exercise', exerciseSchema)
+export default exerciseModel

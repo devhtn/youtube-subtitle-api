@@ -16,5 +16,5 @@ const wordListSchema = new Schema(
   },
   modelConfig
 )
-const wordListModel = mongoose.model('word-list', wordListSchema)
+const wordListModel = mongoose.model('WordList', wordListSchema)
 export default wordListModel

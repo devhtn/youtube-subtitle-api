@@ -2,7 +2,6 @@ import authService from './authService'
 
 const register = async (req, res) => {
   const info = req.body
-  console.log(info)
   const user = await authService.register(info)
   res.status(201).json(user)
 }
@@ -19,7 +18,13 @@ const googleLogin = async (req, res) => {
   return res.status(201).json(login)
 }
 
+const getUser = async (req, res) => {
+  const user = req.user
+  return res.status(201).json(user)
+}
+
 const authController = {
+  getUser,
   register,
   login,
   googleLogin
