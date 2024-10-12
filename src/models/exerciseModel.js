@@ -14,11 +14,15 @@ const exerciseSchema = new Schema(
       required: true,
       unique: true
     },
-    countUsers: {
+    completedCount: {
       type: Number,
-      defautl: 0
+      default: 0
     },
-    firstUserId: {
+    likesCount: {
+      type: Number,
+      default: 0
+    },
+    shareUserId: {
       type: Schema.Types.ObjectId,
       ref: 'User'
     },
@@ -110,6 +114,10 @@ const exerciseSchema = new Schema(
             required: true // endTime là bắt buộc
           },
           text: {
+            type: String,
+            required: true // text là bắt buộc
+          },
+          transText: {
             type: String,
             required: true // text là bắt buộc
           },

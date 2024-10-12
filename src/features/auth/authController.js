@@ -1,3 +1,5 @@
+import MyError from '~/utils/MyError'
+
 import authService from './authService'
 
 const register = async (req, res) => {

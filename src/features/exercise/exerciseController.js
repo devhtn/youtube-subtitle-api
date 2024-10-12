@@ -6,7 +6,7 @@ import exerciseUtil from './exerciseUtil'
 const checkVideo = async (req, res) => {
   const { link } = req.body
   const videoId = exerciseUtil.getVideoId(link)
-  if (!videoId) throw MyError('Đường dẫn không hợp lệ')
+  if (!videoId) throw new MyError('Đường dẫn không hợp lệ')
   const response = await exerciseService.checkVideo(videoId)
   return res.status(201).json(response)
 }
@@ -49,8 +49,8 @@ const updateDictationSegmentNote = async (req, res) => {
   return res.status(201).json(response)
 }
 
-const getAllExercises = async (req, res) => {
-  const response = await exerciseService.getAllExercises()
+const getExercises = async (req, res) => {
+  const response = await exerciseService.getExercises()
   return res.status(201).json(response)
 }
 
@@ -60,9 +60,52 @@ const getExercise = async (req, res) => {
   return res.status(201).json(response)
 }
 
+const createComment = async (req, res) => {
+  const { exerciseId } = req.params
+  const userId = req.user.id
+  const { content, parentId } = req.body
+  const response = await exerciseService.createComment(
+    exerciseId,
+    userId,
+    content,
+    parentId
+  )
+  return res.status(201).json(response)
+}
+const getExerciseComments = async (req, res) => {
+  const { exerciseId } = req.params
+  const response = await exerciseService.getExerciseComments(exerciseId)
+  return res.status(201).json(response)
+}
+
+const toggleLikeComment = async (req, res) => {
+  const userId = req.user.id
+  const { commentId } = req.body
+  const response = await exerciseService.toggleLikeComment(commentId, userId)
+  return res.status(201).json(response)
+}
+
+const toggleLikeList = async (req, res) => {
+  const user = req.user
+  const { exerciseId } = req.body
+  const response = await exerciseService.toggleLikeList(exerciseId, user)
+  return res.status(201).json(response)
+}
+const getUserDictations = async (req, res) => {
+  const user = req.user
+  const query = req.query
+  const response = await exerciseService.getUserDictations(user, query)
+  return res.status(201).json(response)
+}
+
 const exerciseController = {
+  getUserDictations,
+  toggleLikeList,
+  toggleLikeComment,
+  getExerciseComments,
+  createComment,
   getExercise,
-  getAllExercises,
+  getExercises,
   updateDictationProcess,
   updateDictationSegmentNote,
   getDictation,

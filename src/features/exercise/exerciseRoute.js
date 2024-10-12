@@ -43,13 +43,43 @@ exerciseRoute
   .route('')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
-    exerciseController.getAllExercises
+    exerciseController.getExercises
+  )
+exerciseRoute
+  .route('/user-dictation')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.getUserDictations
   )
 exerciseRoute
   .route('/:videoId')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
     exerciseController.getExercise
+  )
+exerciseRoute
+  .route('/:exerciseId/comment')
+  .post(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.createComment
+  )
+exerciseRoute
+  .route('/:exerciseId/comment')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.getExerciseComments
+  )
+exerciseRoute
+  .route('/comment/toggle-like')
+  .post(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.toggleLikeComment
+  )
+exerciseRoute
+  .route('/toggle-like')
+  .post(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.toggleLikeList
   )
 
 export default exerciseRoute

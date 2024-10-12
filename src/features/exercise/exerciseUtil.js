@@ -1,12 +1,56 @@
+import { translate } from '@vitalets/google-translate-api'
 import axios from 'axios'
 import nlp from 'compromise'
+import { HttpProxyAgent } from 'http-proxy-agent'
 import lemmatizer from 'node-lemmatizer'
-import pos from 'pos'
-import tokenizer from 'wink-tokenizer'
 import { parseString } from 'xml2js'
 import ytdl from 'ytdl-core'
 
 import MyError from '~/utils/MyError'
+
+const addTransText = async (videoInfo) => {
+  const { segments } = videoInfo
+  // Kiểm tra tính hợp lệ của segments
+  if (!segments || segments.length === 0) {
+    throw new Error('Segments must contain at least one segment.')
+  }
+  const textsToTranslate = videoInfo.segments
+    .map((segment) => segment.text.replace(/\|/g, '<SEP>'))
+    .join('\n')
+  const agent = new HttpProxyAgent('http://89.213.0.29:80')
+  const translated = await translate(textsToTranslate, {
+    to: 'vi',
+    fetchOptions: { agent }
+  })
+  // Chia lại các đoạn dịch bằng cách sử dụng cùng một dấu phân cách
+  const translatedTexts = translated.text.split('\n')
+  // Kiểm tra nếu không có kết quả dịch
+  if (!translated || !translated.text) {
+    throw new MyError('Translation failed. No text was returned.')
+  }
+
+  // Kiểm tra số lượng đoạn dịch có khớp với số lượng segment không
+  if (translatedTexts.length !== videoInfo.segments.length) {
+    throw new MyError(
+      'Mismatch between number of segments and translated texts.'
+    )
+  }
+  translatedTexts.forEach((transText, index) => {
+    videoInfo.segments[index].transText = transText.trim() // Trimming để loại bỏ khoảng trắng không cần thiết
+  })
+  return videoInfo
+}
+
+function isValidYouTubeVideoId(videoId) {
+  // Kiểm tra độ dài
+  if (videoId.length !== 11) {
+    return false // Độ dài không đúng
+  }
+
+  // Kiểm tra ký tự hợp lệ (chỉ cho phép chữ cái, số, gạch dưới và dấu gạch ngang)
+  const validPattern = /^[a-zA-Z0-9_-]{11}$/
+  return validPattern.test(videoId)
+}
 
 function getVideoId(url) {
   // Định nghĩa các biểu thức chính quy để khớp các dạng URL của YouTube
@@ -17,22 +61,27 @@ function getVideoId(url) {
   // Thử khớp với đường dẫn chuẩn
   const matchStandard = url.match(regexStandard)
   if (matchStandard && matchStandard[1]) {
-    return matchStandard[1]
+    const videoId = matchStandard[1]
+    return isValidYouTubeVideoId(videoId) ? videoId : null
   }
 
   // Thử khớp với đường dẫn rút gọn
   const matchShort = url.match(regexShort)
   if (matchShort && matchShort[1]) {
-    return matchShort[1]
+    const videoId = matchShort[1]
+    return isValidYouTubeVideoId(videoId) ? videoId : null
   }
 
   // Nếu không khớp, trả về null
   return null
 }
 
-const getInfoVideo = async (link) => {
+const getInfoVideo = async (videoId) => {
   // Lấy thông tin videoInfo
-  const video = await ytdl.getInfo(link)
+  const video = await ytdl.getInfo(videoId)
+  if (!video.player_response.captions)
+    throw new MyError('Video không có subtitles')
+
   const videoDetails = video.videoDetails
   const videoInfo = {}
 
@@ -224,6 +273,7 @@ const calcWordMatch = (words, wordList) => {
 }
 
 const exerciseUtil = {
+  addTransText,
   getVideoId,
   getInfoVideo,
   parseSub,

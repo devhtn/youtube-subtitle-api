@@ -14,7 +14,15 @@ const dictationSchema = new Schema(
       ref: 'Exercise',
       required: true
     },
-    totalCompletedSegments: {
+    isCompleted: {
+      type: Boolean,
+      default: false
+    },
+    totalSegments: {
+      type: Number,
+      required: true
+    },
+    completedSegmentsCount: {
       type: Number,
       default: 0
     },

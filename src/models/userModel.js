@@ -33,7 +33,13 @@ const userSchema = new Schema(
     },
     picture: {
       type: String
-    }
+    },
+    likeList: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Exercise'
+      }
+    ]
   },
   modelConfig
 )
