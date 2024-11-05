@@ -1,7 +1,6 @@
 import { translate } from '@vitalets/google-translate-api'
 import axios from 'axios'
 import nlp from 'compromise'
-import { HttpProxyAgent } from 'http-proxy-agent'
 import lemmatizer from 'node-lemmatizer'
 import { parseString } from 'xml2js'
 import ytdl from 'ytdl-core'
@@ -17,10 +16,10 @@ const addTransText = async (videoInfo) => {
   const textsToTranslate = videoInfo.segments
     .map((segment) => segment.text.replace(/\|/g, '<SEP>'))
     .join('\n')
-  const agent = new HttpProxyAgent('http://89.213.0.29:80')
+  // const agent = new HttpProxyAgent('http://89.213.0.29:80')
   const translated = await translate(textsToTranslate, {
-    to: 'vi',
-    fetchOptions: { agent }
+    to: 'vi'
+    // fetchOptions: { agent }
   })
   // Chia lại các đoạn dịch bằng cách sử dụng cùng một dấu phân cách
   const translatedTexts = translated.text.split('\n')
@@ -89,11 +88,17 @@ const getInfoVideo = async (videoId) => {
   videoInfo.title = videoDetails.title
   videoInfo.duration = videoDetails.lengthSeconds
   videoInfo.thumbnails = videoDetails.thumbnails
-  videoInfo.chapters = videoDetails.chapters
   videoInfo.category = videoDetails.category
 
   const tracks =
     video.player_response.captions.playerCaptionsTracklistRenderer.captionTracks
+
+  const asrTrack = tracks.find((track) => track.kind === 'asr')
+  if (asrTrack && !asrTrack.languageCode.startsWith('en'))
+    throw new MyError(
+      `Không hỗ trợ video tiếng ${asrTrack.name.simpleText.replace(/\s*\([^)]*\)/g, '').trim()} `
+    )
+
   let subtitleTrack = tracks.find(
     (track) => track.languageCode.startsWith('en') && track.kind !== 'asr'
   )
@@ -118,6 +123,7 @@ const getInfoVideo = async (videoId) => {
               .replace(/\s?\[.*?\]/g, '')
               .replace(/&#39;/g, "'")
               .replace(/&quot;/g, '"')
+              .replace(/&lt;br&gt;/g, '')
               .trim()
             if (!text) continue
 
@@ -136,12 +142,15 @@ const getInfoVideo = async (videoId) => {
       })
     })
   } else {
-    throw new MyError('Video không có subtitles Tiếng Anh chuẩn')
+    throw new MyError('Video không có phụ đề')
   }
 }
 
 const parseSub = (text) => {
-  const textTags = nlp(text).out('tags')
+  // loại bỏ dấu ngoặc kép, nó có thể làm thay đổi tags
+  const cleanedText = text.replace(/“|”|"/g, '')
+  const textTags = nlp(cleanedText).out('tags')
+
   let mergedTextTags = textTags.reduce((acc, obj) => {
     Object.keys(obj).forEach((key) => {
       acc[key] = obj[key] // Ghi đè nếu thuộc tính đã tồn tại
@@ -149,81 +158,58 @@ const parseSub = (text) => {
     return acc
   }, {})
   mergedTextTags = Object.entries(mergedTextTags)
-  const cleanTags = mergedTextTags.filter((el) => {
-    return /^[a-zA-Z0-9']+$/.test(el[0])
+  let cleanTags = mergedTextTags.filter((el) => {
+    return (
+      /^[a-zA-Z0-9']+$/.test(el[0]) &&
+      !/([a-zA-Z])\1\1/i.test(el[0]) &&
+      !el[1].includes('Acronym')
+    )
   })
 
-  // Xử lý để lấy dictationWords
-  const allArrayWords = text.toLowerCase().replace(/\s+/g, ' ').split(' ')
+  const allArrayWords = cleanedText.replace(/\s+/g, ' ').split(' ')
   const arrayWords = [...new Set(allArrayWords)]
   const dictationWords = []
   arrayWords.forEach((word) => {
-    // Tạo biến cleanWord chỉ một lần
+    // Loại bỏ dấu ' đầu và cuối, đồng thời những kí tự đặc biệt
     const cleanWord = word
       .replace(/^[^a-zA-Z0-9]+/, '')
       .replace(/[^a-zA-Z0-9]+$/, '')
 
-    if (/^[a-zA-Z0-9']+$/.test(cleanWord)) {
-      // Tìm kiếm trong sentenceTags
-      const found = cleanTags.find((el) => el[0] === cleanWord)
+    // Tìm kiếm trong sentenceTags
+    const found = cleanTags.find((el) => el[0] === cleanWord.toLowerCase())
+    // Kiểm tra nếu là dạng từ viết tắt (contraction)
+    const isContraction = /['’]/.test(cleanWord)
 
-      // Kiểm tra nếu là dạng từ viết tắt (contraction)
-      const isContraction = /\b\w+'\w+\b/.test(cleanWord)
-
-      if (isContraction) {
-        if (!found || found[1].includes('Possessive')) {
-          if (found) {
-            const possTag = Object.entries(
-              nlp(cleanWord.split("'")[0]).out('tags')[0]
-            )[0]
-            if (!possTag[1].includes('ProperNoun')) {
-              dictationWords.push(cleanWord)
-            }
-          } else {
+    if (isContraction) {
+      if (!found || found[1].includes('Possessive')) {
+        // Xét trường hợp có dấu ' nhưng là dạng sở hữu, không phải viết tắt
+        if (found) {
+          const possTag = Object.entries(
+            nlp(cleanWord.split("'")[0]).out('tags')[0]
+          )[0]
+          if (!possTag[1].includes('ProperNoun')) {
             dictationWords.push(cleanWord)
           }
         }
-      } else if (found && !found[1].includes('ProperNoun')) {
-        dictationWords.push(cleanWord)
-      }
-    }
-  })
-
-  // Xử lý để lấy lemmatizedWords
-  const tagWords = []
-  const removeTags = new Set() // Sử dụng Set để kiểm tra sự tồn tại nhanh hơn
-
-  cleanTags.forEach((tag) => {
-    const word = tag[0]
-    const tags = tag[1]
-
-    // Kiểm tra xem từ có chứa dấu ' hay không
-    if (/\b\w+'\w+\b/.test(word)) {
-      if (tags.includes('Possessive')) {
-        const possTag = Object.entries(
-          nlp(word.split("'")[0]).out('tags')[0]
-        )[0]
-        // Kiểm tra không phải danh từ riêng
-        if (!possTag[1].includes('ProperNoun')) {
-          tagWords.push(possTag)
+        // Trường hợp có dấu ' và phát hiện viết tắt
+        else {
+          dictationWords.push(cleanWord)
         }
-        removeTags.add(tag[0]) // Thêm vào Set
-      } else {
-        removeTags.add(tag[0])
       }
-    } else if (/^[a-zA-Z]+$/.test(word)) {
-      // Kiểm tra chỉ chứa chữ cái
-      if (!tags.includes('ProperNoun')) {
-        tagWords.push(tag)
-      }
+      cleanTags = cleanTags.filter((el) => el[0] !== cleanWord.toLowerCase())
+    } else if (found) {
+      if (
+        !(found[1].includes('ProperNoun') && /^[A-Z]/.test(cleanWord)) ||
+        (found[1].includes('Pronoun') && found[1].includes('ProperNoun'))
+      ) {
+        dictationWords.push(cleanWord)
+      } else
+        cleanTags = cleanTags.filter((el) => el[0] !== cleanWord.toLowerCase())
     }
   })
-
-  // Lọc các tagWords bằng cách kiểm tra trong removeTags
-  const cleanTagWords = tagWords.filter((tag) => !removeTags.has(tag[0]))
 
   const lemmatizedWords = []
-  cleanTagWords.forEach((tagWord) => {
+  cleanTags.forEach((tagWord) => {
     const word = tagWord[0]
     const tags = tagWord[1] // tags là array chứa nhiều loại từ
     let lemma
@@ -241,15 +227,9 @@ const parseSub = (text) => {
       lemma = [word] // Giữ nguyên từ nếu không phải là động từ, danh từ hoặc tính từ
     }
 
-    if (lemma.length > 1) {
-      // Nếu lemma có 2 phần tử, push dạng mảng chứa 2 phần tử
-      lemmatizedWords.push(lemma)
-    } else {
-      // Nếu chỉ có 1 phần tử, push phần tử đó
-      lemmatizedWords.push(...lemma)
-    }
+    if (lemma.length > 1) lemma = [word]
+    lemmatizedWords.push(...lemma)
   })
-
   return { lemmatizedWords, dictationWords, lengthWords: allArrayWords.length }
 }
 
@@ -258,15 +238,8 @@ const calcWordMatch = (words, wordList) => {
 
   let matchCount = 0
   words.forEach((word) => {
-    if (Array.isArray(word)) {
-      // Nếu phần tử là một mảng, kiểm tra từng từ trong mảng
-      const hasMatch = word.some((el) => setWordList.has(el))
-      if (hasMatch) {
-        matchCount++
-      }
-    }
     // Nếu phần tử là chuỗi đơn
-    else if (setWordList.has(word.toLowerCase())) matchCount++
+    if (setWordList.has(word.toLowerCase())) matchCount++
   })
 
   return matchCount

@@ -18,30 +18,31 @@ const dictationSchema = new Schema(
       type: Boolean,
       default: false
     },
-    totalSegments: {
-      type: Number,
-      required: true
-    },
     completedSegmentsCount: {
       type: Number,
       default: 0
+    },
+    totalCompletedSegments: {
+      type: Number,
+      required: true
     },
     segments: {
       type: [
         {
           segmentId: {
             type: Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
-            unique: true
+            required: true
           },
           note: {
             type: String
           },
           isCompleted: {
             type: Boolean,
-            required: true,
             default: false
+          },
+          attemptsCount: {
+            type: Number,
+            default: 0
           }
         }
       ]

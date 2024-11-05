@@ -26,18 +26,11 @@ exerciseRoute
     exerciseController.getDictation
   )
 exerciseRoute
-  .route('/dictation/:dictationId/segment/:segmentId/process')
+  .route('/dictation/:dictationId/segment/:segmentId')
   .patch(
     passport.authenticate('passport-jwt', { session: false }),
     authorize('user'),
-    exerciseController.updateDictationProcess
-  )
-exerciseRoute
-  .route('/dictation/:dictationId/segment/:segmentId/note')
-  .patch(
-    passport.authenticate('passport-jwt', { session: false }),
-    authorize('user'),
-    exerciseController.updateDictationSegmentNote
+    exerciseController.updateDictationSegment
   )
 exerciseRoute
   .route('')
@@ -52,13 +45,19 @@ exerciseRoute
     exerciseController.getUserDictations
   )
 exerciseRoute
-  .route('/:videoId')
+  .route('/user-list')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.getUserList
+  )
+exerciseRoute
+  .route('/:id')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
     exerciseController.getExercise
   )
 exerciseRoute
-  .route('/:exerciseId/comment')
+  .route('/comment')
   .post(
     passport.authenticate('passport-jwt', { session: false }),
     exerciseController.createComment
@@ -79,7 +78,19 @@ exerciseRoute
   .route('/toggle-like')
   .post(
     passport.authenticate('passport-jwt', { session: false }),
-    exerciseController.toggleLikeList
+    exerciseController.toggleLikeExercise
+  )
+exerciseRoute
+  .route('/dictation')
+  .post(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.createDictation
+  )
+exerciseRoute
+  .route('/dictation/:id')
+  .delete(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.delDictation
   )
 
 export default exerciseRoute

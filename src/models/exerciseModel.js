@@ -14,15 +14,33 @@ const exerciseSchema = new Schema(
       required: true,
       unique: true
     },
-    completedCount: {
+    category: {
+      type: String,
+      required: true
+    },
+    completedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
+    likedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
+    commentedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
+    commentedCount: {
       type: Number,
       default: 0
     },
-    likesCount: {
-      type: Number,
-      default: 0
-    },
-    shareUserId: {
+    firstUserId: {
       type: Schema.Types.ObjectId,
       ref: 'User'
     },
@@ -34,22 +52,15 @@ const exerciseSchema = new Schema(
       type: String,
       required: true
     },
-    category: {
-      type: String,
-      require: true
-    },
     duration: {
-      type: String,
+      type: Number,
       required: true
     },
     totalDictationWords: {
       type: Number,
       required: true
     },
-    totalDictationUniqWords: {
-      type: Number,
-      required: true
-    },
+    lemmaWords: [String],
     avgSpeed: {
       type: Number,
       required: true
@@ -70,65 +81,42 @@ const exerciseSchema = new Schema(
         }
       }
     ],
-    thumbnails: {
-      type: [
-        {
-          url: {
-            type: String,
-            required: true
-          },
-          width: {
-            type: Number,
-            required: true
-          },
-          height: {
-            type: String,
-            required: true
-          }
+    thumbnails: [
+      {
+        url: {
+          type: String,
+          required: true
+        },
+        width: {
+          type: Number,
+          required: true
+        },
+        height: {
+          type: String,
+          required: true
         }
-      ]
-    },
-    chapters: {
-      type: [
-        {
-          title: {
-            type: String,
-            required: true
-          },
-          start_time: {
-            type: Number,
-            required: true
-          }
-        }
-      ]
-    },
+      }
+    ],
     segments: {
       type: [
         {
           start: {
-            type: Number,
-            required: true // startTime là bắt buộc
+            type: Number
           },
           end: {
-            type: Number,
-            required: true // endTime là bắt buộc
+            type: Number
           },
           text: {
-            type: String,
-            required: true // text là bắt buộc
+            type: String
           },
           transText: {
-            type: String,
-            required: true // text là bắt buộc
+            type: String
           },
           dictationWords: {
-            type: [String],
-            validate: {
-              validator: function (array) {
-                return array.length > 0 // Kiểm tra phải có ít nhất 1 phần tử
-              },
-              message: 'DictationWords must contain at least one word.'
-            }
+            type: [String]
+          },
+          lemmaSegmentWords: {
+            type: [String]
           }
         }
       ],

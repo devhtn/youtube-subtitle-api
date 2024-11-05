@@ -16,7 +16,7 @@ const createExercise = async (req, res) => {
   const user = req.user
   let response
   if (user.role === 'admin')
-    response = await exerciseService.createPublicExercise(videoInfo, user)
+    response = await exerciseService.adminCreateExercise(videoInfo, user)
   else response = await exerciseService.createExercise(videoInfo, user)
   return res.status(201).json(response)
 }
@@ -28,45 +28,37 @@ const getDictation = async (req, res) => {
   return res.status(201).json(response)
 }
 
-const updateDictationProcess = async (req, res) => {
+const updateDictationSegment = async (req, res) => {
   const { dictationId, segmentId } = req.params
-  const response = await exerciseService.updateDictation(
+  const updateFields = req.body
+  const userId = req.user.id
+  const response = await exerciseService.updateDictationSegment(
     dictationId,
     segmentId,
-    { isCompleted: true }
-  )
-  return res.status(201).json(response)
-}
-
-const updateDictationSegmentNote = async (req, res) => {
-  const { dictationId, segmentId } = req.params
-  const { note } = req.body
-  const response = await exerciseService.updateDictation(
-    dictationId,
-    segmentId,
-    { note }
+    updateFields,
+    userId
   )
   return res.status(201).json(response)
 }
 
 const getExercises = async (req, res) => {
-  const response = await exerciseService.getExercises()
+  const query = req.query
+  const response = await exerciseService.getExercises(query)
   return res.status(201).json(response)
 }
 
 const getExercise = async (req, res) => {
-  const { videoId } = req.params
-  const response = await exerciseService.getExercise(videoId)
+  const { id } = req.params
+  const response = await exerciseService.getExercise(id)
   return res.status(201).json(response)
 }
 
 const createComment = async (req, res) => {
-  const { exerciseId } = req.params
-  const userId = req.user.id
-  const { content, parentId } = req.body
+  const user = req.user
+  const { content, parentId, exerciseId } = req.body
   const response = await exerciseService.createComment(
     exerciseId,
-    userId,
+    user,
     content,
     parentId
   )
@@ -85,10 +77,10 @@ const toggleLikeComment = async (req, res) => {
   return res.status(201).json(response)
 }
 
-const toggleLikeList = async (req, res) => {
+const toggleLikeExercise = async (req, res) => {
   const user = req.user
   const { exerciseId } = req.body
-  const response = await exerciseService.toggleLikeList(exerciseId, user)
+  const response = await exerciseService.toggleLikeExercise(exerciseId, user)
   return res.status(201).json(response)
 }
 const getUserDictations = async (req, res) => {
@@ -98,16 +90,40 @@ const getUserDictations = async (req, res) => {
   return res.status(201).json(response)
 }
 
+const createDictation = async (req, res) => {
+  const user = req.user
+  const { exerciseId, totalSegments } = req.body
+  const response = await exerciseService.createDictation(
+    exerciseId,
+    totalSegments,
+    user
+  )
+  return res.status(201).json(response)
+}
+
+const getUserList = async (req, res) => {
+  const userId = req.user.id
+  const response = await exerciseService.getUserList(userId)
+  return res.status(201).json(response)
+}
+
+const delDictation = async (req, res) => {
+  const { id } = req.params
+  const response = await exerciseService.delDictation(id)
+  return res.status(201).json(response)
+}
 const exerciseController = {
+  delDictation,
+  getUserList,
+  createDictation,
   getUserDictations,
-  toggleLikeList,
+  toggleLikeExercise,
   toggleLikeComment,
   getExerciseComments,
   createComment,
   getExercise,
   getExercises,
-  updateDictationProcess,
-  updateDictationSegmentNote,
+  updateDictationSegment,
   getDictation,
   checkVideo,
   createExercise

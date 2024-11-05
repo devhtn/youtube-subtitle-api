@@ -38,7 +38,6 @@ const login = async (userInfo) => {
   // custom returned results
   // eslint-disable-next-line no-unused-vars
   const { password: removedPassword } = user.toObject()
-
   return token
 }
 
