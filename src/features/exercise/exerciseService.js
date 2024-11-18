@@ -2,12 +2,13 @@ import _ from 'lodash'
 
 import MyError from '~/utils/MyError'
 
+import wordService from '../word/wordService'
 import exerciseUtil from './exerciseUtil'
 import commentModel from '~/models/commentModel'
 import dictationModel from '~/models/dictationModel'
 import exerciseModel from '~/models/exerciseModel'
-import userModel from '~/models/userModel'
 import wordListModel from '~/models/wordListModel'
+import { filterQuery } from '~/utils'
 
 const checkVideo = async (videoId) => {
   // Kiểm tra nếu đã tồn tại bài tập với videoId, trả về nếu có
@@ -49,58 +50,13 @@ const checkVideo = async (videoId) => {
   videoInfo.lemmaWords = Array.from(lemmaWordsSet)
 
   // Tạo danh sách đối chiếu từ vựng với `wordLists`
-  const wordLists = await wordListModel.find({})
-  videoInfo.checkList = wordLists.map((list) => ({
-    name: list.name,
-    desc: list.desc,
-    match: exerciseUtil.calcWordMatch(videoInfo.lemmaWords, list.words)
-  }))
+  const oxfordList = await wordListModel.findOne({ name: 'Oxford 3000' })
+  videoInfo.difficult =
+    lemmaWordsSet.size -
+    exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordList.words)
   const newVideoInfo = await exerciseUtil.addTransText(videoInfo)
 
   return newVideoInfo
-}
-
-const createDictation = async (exerciseId, user) => {
-  // Kiểm tra có dictation đang dang dở không
-  const inCompleted = await dictationModel.findOne({
-    userId: user.id,
-    isCompleted: false
-  })
-
-  if (inCompleted) {
-    throw new MyError('Bạn có bài tập chưa hoàn thành!', 409)
-  }
-
-  // Kiểm tra exercise đã hoàn thành trước đó chưa
-  const existingDictation = await dictationModel
-    .findOne({
-      exerciseId,
-      userId: user.id
-    })
-    .lean()
-  if (existingDictation)
-    throw new MyError('Bài tập này đã được bạn hoàn thành', 410)
-
-  // Tìm kiếm exercise theo exerciseId và lọc các validSegments
-  const exercise = await exerciseModel.findById(exerciseId).lean()
-
-  if (!exercise) {
-    throw new MyError('Không tìm thấy bài tập với ID này', 404)
-  }
-  // Lọc các segments có dictationWords hợp lệ
-  const validSegments = exercise.segments.filter(
-    (segment) => segment.dictationWords.length > 0
-  )
-
-  // Tạo dictation mới
-  const newDictation = new dictationModel({
-    userId: user.id,
-    exerciseId,
-    segments: validSegments
-  })
-
-  await newDictation.save()
-  return newDictation
 }
 
 const delDictation = async (dictationId) => {
@@ -119,6 +75,61 @@ const delDictation = async (dictationId) => {
   }
 
   return dictation
+}
+
+const createDictation = async (exerciseId, userId) => {
+  // Kiểm tra có dictation đang dang dở không
+  const inCompleted = await dictationModel.findOne({
+    userId,
+    isCompleted: false
+  })
+
+  if (inCompleted) {
+    throw new MyError('Chỉ được thêm tối đa một bài tập mới!', 409)
+  }
+
+  // Kiểm tra exercise đã hoàn thành trước đó chưa
+  const existingDictation = await dictationModel
+    .findOne({
+      exerciseId,
+      userId
+    })
+    .lean()
+  if (existingDictation)
+    throw new MyError('Bài tập này đã được bạn hoàn thành', 410)
+
+  // Tìm kiếm exercise theo exerciseId và lọc các validSegments
+  const exercise = await exerciseModel.findById(exerciseId).lean()
+
+  if (!exercise) {
+    throw new MyError('Không tìm thấy bài tập với ID này', 404)
+  }
+
+  const dictationSegments = [] // Mảng để lưu các segment đã được ánh xạ
+  let totalCompletedSegments = 0 // Biến để đếm số lượng segment hợp lệ
+
+  // Duyệt qua từng segment và thực hiện cả hai thao tác
+  for (const segment of exercise.segments) {
+    // Thêm segmentId vào từng phần tử và lưu vào dictationSegments
+    dictationSegments.push({
+      ...segment,
+      segmentId: segment._id // Thêm segmentId
+    })
+
+    // Kiểm tra điều kiện để đếm totalCompletedSegments
+    if (segment.dictationWords.length > 0) {
+      totalCompletedSegments++ // Tăng số lượng segment hợp lệ
+    }
+  }
+
+  // Tạo dictation mới
+  const newDictation = await dictationModel.create({
+    userId,
+    exerciseId: exercise._id,
+    segments: dictationSegments,
+    totalCompletedSegments // Sử dụng tổng số đã tính toán
+  })
+  return newDictation
 }
 
 const createExercise = async (videoInfo, user) => {
@@ -182,50 +193,63 @@ const createExercise = async (videoInfo, user) => {
     userId: user.id,
     exerciseId: exercise._id,
     segments: dictationSegments,
-    totalCompletedSegments: totalCompletedSegments // Sử dụng tổng số đã tính toán
+    totalCompletedSegments // Sử dụng tổng số đã tính toán
   })
 
   return exercise
 }
 
-const adminCreateExercise = async (videoInfo, user) => {
-  let exercise = await exerciseModel.findOne({
-    videoId: videoInfo.videoId
-  })
-  if (exercise) {
-    if (exercise.isPublic) throw new Error('Exercise đã được public trước đó')
-    else {
-      exercise.isPublic = true
-      await exercise.save()
-    }
-  } else {
-    // Nếu category chưa tồn tại, tạo category mới
-    exercise = await exerciseModel.create({
-      ...videoInfo,
-      isPublic: true,
-      userId: user.id
-    })
+const getDictation = async (dictationId) => {
+  // Kiểm tra nếu dictationId được cung cấp
+  if (!dictationId) {
+    throw new Error('dictationId is required')
   }
 
-  return exercise
-}
-
-const getDictation = async (videoId, userId) => {
-  const exercise = await exerciseModel.findOne({ videoId })
-  if (!exercise) throw new MyError('Bài tập không tồn tại')
-  return await dictationModel.findOne({ exerciseId: exercise.id, userId })
-}
-
-const getUserDictations = async (user, query = {}) => {
-  const condition = { userId: user.id }
-  if (query.isCompleted !== undefined) condition.isCompleted = query.isCompleted
-  // Lấy danh sách dictation của người dùng
-  const dictations = await dictationModel.find(condition).populate({
+  // Tìm dictation dựa trên dictationId và populate exerciseId cùng userId
+  const dictation = await dictationModel.findById(dictationId).populate({
     path: 'exerciseId',
     populate: [{ path: 'userId' }]
   })
 
-  return dictations
+  // Trả về dictation tìm thấy hoặc null nếu không tồn tại
+  return dictation
+}
+
+const updateDictation = async (id, dataFields = {}) => {
+  // Handle replay logic
+  if (dataFields.replay !== undefined) {
+    // Lấy dictation hiện tại để xử lý các trường hợp liên quan đến `segments`
+    const dictation = await dictationModel.findById(id)
+
+    if (!dictation) {
+      throw new Error('Dictation không tồn tại.')
+    }
+
+    // Trường hợp replay là `false`
+    if (Array.isArray(dataFields.replay)) {
+      if (_.isEmpty(dataFields.replay))
+        throw new MyError('Bạn chưa quên từ vựng nào!')
+      // Cập nhật `isCompleted` thành `false` cho các index trong mảng
+      dataFields.replay.forEach((el) => {
+        if (dictation.segments[el]) {
+          dictation.segments[el].isCompleted = false
+        }
+      })
+      dictation.completedSegmentsCount =
+        dictation.totalCompletedSegments - dataFields.replay.length
+      dataFields.replay = true // Sửa đổi replay thành trường hợp lệ
+    }
+    await dictation.save()
+  }
+
+  // Tìm và cập nhật Dictation với các trường trong dataFields
+  const updated = await dictationModel.findByIdAndUpdate(
+    id, // ID của document cần cập nhật
+    { $set: dataFields }, // Các trường và giá trị cần cập nhật
+    { new: true, runValidators: true } // Trả về document đã cập nhật, kiểm tra validation trước khi cập nhật
+  )
+
+  return updated // Trả về Dictation đã được cập nhật
 }
 
 const updateDictationSegment = async (
@@ -267,6 +291,7 @@ const updateDictationSegment = async (
     { new: true }
   )
 
+  // Lấy danh sách lemmaWords của segment trả lời đúng
   let newLevelWords = []
   if (updateDictation && updateFields.isCompleted && !segment.isCompleted) {
     // Bước 1: Tìm exercise dựa trên exerciseId
@@ -288,28 +313,41 @@ const updateDictationSegment = async (
     }
 
     // Bước 5: Lấy lemmaSegmentWords và cập nhật vào levelWords
-    newLevelWords = segment.lemmaSegmentWords
+    const lemmaSegmentWords = segment.lemmaSegmentWords
 
-    await userModel.updateOne(
-      { userId },
-      { $addToSet: { levelWords: { $each: newLevelWords } } } // Thêm từng từ trong newLevelWords vào levelWords
-    )
+    newLevelWords = await wordService.addWords(lemmaSegmentWords, userId)
   }
 
+  // update dictation khi hoàn thành tất cả segment
   if (
     updateFields.isCompleted &&
     updateDictation.completedSegmentsCount ===
       updateDictation.totalCompletedSegments
   ) {
-    updateDictation = await dictationModel.findByIdAndUpdate(
-      dictationId,
-      {
-        $set: { isCompleted: true }
-      },
-      { new: true }
-    )
-    // Nếu newUpdate.isCompleted là true, cập nhật completedCount của exerciseModel
-    if (updateDictation.isCompleted) {
+    let isReplay = false
+    // Xét trường hợp dictation hoàn thành ở dạng replay
+    if (updateDictation.replay) {
+      updateDictation.replay = false
+      isReplay = true
+    }
+    // Trường hợp hoàn thành lần đầu tiên
+    else {
+      updateDictation.isCompleted = true
+      // Tính điểm cho bài tập vừa hoàn thành
+      let totalSegmentScore = 0
+      updateDictation.segments.forEach((segment) => {
+        const segmentScore = 1 / segment.attemptsCount
+        totalSegmentScore += segmentScore
+      })
+      const dictationScore =
+        totalSegmentScore / updateDictation.totalCompletedSegments
+      updateDictation.score = Math.round(dictationScore * 100)
+    }
+    // Cập nhật newUpdate
+    await updateDictation.save()
+
+    // Cập nhật completedCount của exerciseModel
+    if (updateDictation.isCompleted && !isReplay) {
       const exercise = await exerciseModel.findById(updateDictation.exerciseId)
 
       // Kiểm tra xem có người dùng nào đã hoàn thành hay chưa
@@ -329,32 +367,61 @@ const updateDictationSegment = async (
       )
     }
   }
+
   return { updateDictation, newLevelWords }
 }
 
-const getUserList = async (userId) => {
-  const user = await userModel
-    .findById(userId)
-    .populate('completedList') // Điền chi tiết thông tin bài tập đã hoàn thành
-    .populate('likedList') // Điền chi tiết thông tin bài tập đã thích
-    .populate('commentedList') // Điền chi tiết thông tin bài tập đã bình luận
+const getUserDictations = async (userId, query = {}) => {
+  // Lọc các query tùy chỉnh nếu có
+  const filter = filterQuery(query)
 
-  return user
+  // handle playing
+  if (filter.playing) {
+    filter.$or = [{ isCompleted: false }, { replay: true }]
+    delete filter.playing
+  }
+
+  // Lấy trang và giới hạn
+  const page = parseInt(query.page, 10) || 1 // Trang hiện tại
+  const limit = parseInt(query.limit, 10) || 2 // Số lượng bản ghi mỗi trang
+  const skip = (page - 1) * limit // Số lượng bản ghi cần bỏ qua
+
+  // Sử dụng skip và limit trong MongoDB
+  const dictations = await dictationModel
+    .find({ userId, ...filter })
+    .skip(skip) // Bỏ qua các bản ghi trước đó
+    .limit(limit) // Giới hạn số lượng bản ghi trả về
+    .populate({
+      path: 'exerciseId',
+      populate: [{ path: 'userId' }, { path: 'firstUserId' }]
+    })
+
+  return dictations
 }
 
-const getExercises = async (query) => {
-  // Đếm tổng số exercise công khai
-  const filter = _.omit(query, ['page', 'limit', 'sort', 'order', 'select'])
+const getExercises = async (query, userId) => {
+  let filter = filterQuery(query)
 
-  Object.keys(filter).forEach((key) => {
-    if (
-      filter[key] === null ||
-      filter[key] === undefined ||
-      filter[key] === ''
-    ) {
-      delete filter[key]
+  // FILTER
+  // handle category
+  if (Array.isArray(filter.category)) {
+    filter.category = { $in: filter.category }
+  }
+  // handle duration
+  exerciseUtil.handleRangeFilter(filter, 'duration')
+  // handle difficult
+  exerciseUtil.handleRangeFilter(filter, 'difficult')
+  // handle interaction
+  if (filter.interaction) {
+    if (typeof filter.interaction === 'string') {
+      filter.interaction = [filter.interaction]
     }
-  })
+    const conditions = filter.interaction.map((property) => {
+      return { [property]: userId } // Đúng cú pháp cho dynamic key
+    })
+    delete filter.interaction
+    filter.$or = [...(filter.$or || []), ...conditions]
+  }
 
   const page = parseInt(query.page, 10) || 1
   const limit = parseInt(query.limit, 10) || 2
@@ -369,6 +436,7 @@ const getExercises = async (query) => {
     isPublic: true,
     ...filter
   })
+  const totalPages = Math.ceil(totalExercises / limit)
 
   // Sử dụng aggregate để lấy danh sách exercises với số lượng người dùng đã hoàn thành
   const exercises = await exerciseModel.aggregate([
@@ -378,12 +446,7 @@ const getExercises = async (query) => {
     {
       $addFields: {
         completedUsersCount: { $size: '$completedUsers' }, // Đếm số lượng người dùng đã hoàn thành
-        difficult: {
-          $subtract: [
-            { $size: '$lemmaWords' }, // Độ dài của mảng lemmaWords
-            { $ifNull: [{ $arrayElemAt: ['$checkList.match', 0] }, 0] } // Giá trị checkList[0].match
-          ]
-        }
+        id: '$_id'
       }
     },
     {
@@ -405,26 +468,48 @@ const getExercises = async (query) => {
         from: 'users',
         localField: 'firstUserId',
         foreignField: '_id',
-        as: 'firstUser'
+        as: 'firstUserId'
       }
     },
     {
       $unwind: {
-        path: '$firstUser',
+        path: '$firstUserId',
         preserveNullAndEmptyArrays: true // Giữ lại bài tập nếu không tìm thấy người dùng
+      }
+    },
+    {
+      $addFields: {
+        'firstUserId.id': '$firstUserId._id' // Thêm trường id cho firstUserId
       }
     }
   ])
 
   // Nhóm các bài tập theo category và đếm số lượng bài tập cho từng category
+
+  return { exercises, totalPages }
+}
+
+const getCategories = async () => {
   const categories = await exerciseModel.aggregate([
-    { $match: { isPublic: true, ...filter } }, // Chỉ lấy bài tập công khai
-    { $group: { _id: '$category', count: { $sum: 1 } } }, // Nhóm theo category
-    { $project: { _id: 0, name: '$_id', count: 1 } }, // Chọn trường trả về
-    { $sort: { count: -1 } }
+    {
+      $match: { isPublic: true } // Chỉ lấy bài tập công khai với bộ lọc
+    },
+    {
+      $group: { _id: '$category' } // Nhóm theo category
+    },
+    {
+      $sort: { _id: 1 } // Sắp xếp theo tên category (tùy chỉnh)
+    },
+    {
+      $project: {
+        _id: 0, // Loại bỏ _id gốc
+        label: '$_id', // Gán giá trị _id vào label
+        value: '$_id' // Gán giá trị _id vào value
+      }
+    }
   ])
 
-  return { exercises, totalExercises, categories }
+  return categories
 }
 
 const getExercise = async (id) => {
@@ -432,57 +517,6 @@ const getExercise = async (id) => {
 }
 
 // comment exercise
-const createComment = async (exerciseId, user, content, parentId) => {
-  let mentionUserId = null
-  let newParentId = parentId
-
-  if (parentId) {
-    // Tìm comment cha để lấy parentId
-    const parent = await commentModel.findById(parentId)
-
-    if (parent && parent.parentId !== null) {
-      newParentId = parent.parentId // Cập nhật newParentId
-      mentionUserId = parent.userId // Gán mentionUserId
-    }
-  }
-
-  // Tạo comment mới
-  const newComment = await commentModel.create({
-    exerciseId,
-    userId: user.id,
-    content,
-    parentId: newParentId, // Lưu trữ parentId gốc cho comment mới
-    mentionUserId // Đưa mentionUserId vào
-  })
-
-  if (newComment) {
-    await exerciseModel.findByIdAndUpdate(exerciseId, {
-      $addToSet: { commentedUsers: user.id }, // Chỉ thêm nếu user chưa tồn tại
-      $inc: { commentedCount: 1 }
-    })
-  }
-  // Nếu comment có parentId, thêm vào mảng replies của comment cha
-  if (newParentId) {
-    await commentModel.findByIdAndUpdate(newParentId, {
-      $push: { replies: { $each: [newComment._id], $position: 0 } }
-    })
-  }
-
-  // Tìm lại comment vừa tạo và populate dữ liệu cần thiết
-  const savedComment = await commentModel
-    .findById(newComment._id)
-    .populate('userId', 'name picture') // Populate thông tin người dùng cho comment gốc
-    .populate({
-      path: 'replies',
-      populate: [
-        { path: 'userId', select: 'name picture' }, // Populate thông tin người dùng trong replies
-        { path: 'mentionUserId', select: 'name' } // Populate thông tin người dùng cho mentionUserId
-      ] // Populate thông tin người dùng trong replies
-    })
-    .populate('mentionUserId', 'name') // Populate thông tin người dùng được đề cập
-
-  return savedComment
-}
 
 const getExerciseComments = async (exerciseId) => {
   return await commentModel
@@ -497,39 +531,6 @@ const getExerciseComments = async (exerciseId) => {
       ]
     })
     .exec()
-}
-
-const toggleLikeComment = async (commentId, userId) => {
-  // Tìm và cập nhật comment
-  const comment = await commentModel.findById(commentId)
-  if (!comment) throw new Error('Comment not found')
-
-  // Kiểm tra xem user đã like comment này chưa
-  const hasLiked = comment.likes.includes(userId)
-
-  // Thêm hoặc bỏ like
-  if (hasLiked) {
-    comment.likes.pull(userId) // Bỏ like
-  } else {
-    comment.likes.push(userId) // Thêm like
-  }
-
-  await comment.save()
-
-  // Lấy lại comment đã cập nhật và populate các dữ liệu cần thiết
-  const updatedComment = await commentModel
-    .findById(commentId)
-    .populate('userId', 'name picture')
-    .populate({
-      path: 'replies',
-      populate: [
-        { path: 'userId', select: 'name picture' },
-        { path: 'mentionUserId', select: 'name' }
-      ]
-    })
-    .populate('mentionUserId', 'name')
-
-  return updatedComment
 }
 
 const toggleLikeExercise = async (exerciseId, user) => {
@@ -558,19 +559,17 @@ const toggleLikeExercise = async (exerciseId, user) => {
 
 const exerciseService = {
   delDictation,
-  getUserList,
   getUserDictations,
   createDictation,
   toggleLikeExercise,
-  toggleLikeComment,
   getExerciseComments,
-  createComment,
   getExercise,
   getExercises,
-  adminCreateExercise,
   updateDictationSegment,
   getDictation,
   checkVideo,
-  createExercise
+  createExercise,
+  getCategories,
+  updateDictation
 }
 export default exerciseService

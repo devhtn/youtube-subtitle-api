@@ -65,22 +65,10 @@ const exerciseSchema = new Schema(
       type: Number,
       required: true
     },
-    checkList: [
-      {
-        name: {
-          type: String,
-          required: true
-        },
-        desc: {
-          type: String,
-          required: true
-        },
-        match: {
-          type: Number,
-          required: true
-        }
-      }
-    ],
+    difficult: {
+      type: Number,
+      required: true
+    },
     thumbnails: [
       {
         url: {

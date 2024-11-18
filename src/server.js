@@ -1,8 +1,11 @@
 import 'express-async-errors'
 
+import http from 'http'
+
 import cors from 'cors'
 import express from 'express'
 import passport from 'passport'
+import { Server } from 'socket.io'
 
 import connectDB from './config/db'
 import env from './config/env'
@@ -10,6 +13,8 @@ import handleError from './middlewares/handleError'
 import routerV1 from './router/v1'
 
 import '~/config/passport'
+
+import { setupSocket } from './socket'
 
 const SERVER = () => {
   const app = express()
@@ -25,8 +30,20 @@ const SERVER = () => {
   // handle error
   app.use(handleError)
 
-  app.listen(env.PORT, env.HOST, () => {
-    console.log(`Server is running at port:${process.env.PORT}`)
+  // Create HTTP server and integrate Socket.IO
+  const server = http.createServer(app)
+  const io = new Server(server, {
+    cors: {
+      origin: 'http://localhost:5174', // Cấu hình CORS theo nhu cầu
+      methods: ['GET', 'POST']
+    }
+  })
+
+  // Setup Socket.IO logic
+  setupSocket(io)
+
+  server.listen(env.PORT, env.HOST, () => {
+    console.log(`Server is running at port:${env.PORT}`)
   })
 }
 

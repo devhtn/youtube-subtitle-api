@@ -3,8 +3,8 @@ import MyError from '~/utils/MyError'
 import authService from './authService'
 
 const register = async (req, res) => {
-  const info = req.body
-  const user = await authService.register(info)
+  const body = req.body
+  const user = await authService.register(body)
   res.status(201).json(user)
 }
 const login = async (req, res) => {

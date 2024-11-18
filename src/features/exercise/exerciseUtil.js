@@ -7,6 +7,23 @@ import ytdl from 'ytdl-core'
 
 import MyError from '~/utils/MyError'
 
+// Function to handle range filtering
+const handleRangeFilter = (filter, key) => {
+  if (filter[key]) {
+    if (typeof filter[key] === 'string') {
+      filter[key] = [filter[key]]
+    }
+    const conditions = filter[key].map((range) => {
+      const [min, max] = range.split('-')
+      return max === ''
+        ? { [key]: { $gte: +min } }
+        : { [key]: { $gte: +min, $lt: +max } }
+    })
+    delete filter[key]
+    filter.$or = [...(filter.$or || []), ...conditions]
+  }
+}
+
 const addTransText = async (videoInfo) => {
   const { segments } = videoInfo
   // Kiểm tra tính hợp lệ của segments
@@ -82,6 +99,8 @@ const getInfoVideo = async (videoId) => {
     throw new MyError('Video không có subtitles')
 
   const videoDetails = video.videoDetails
+  if (videoDetails.lengthSeconds > 1200)
+    throw new MyError('Thời lượng không nên quá 20 phút')
   const videoInfo = {}
 
   videoInfo.videoId = videoDetails.videoId
@@ -246,6 +265,7 @@ const calcWordMatch = (words, wordList) => {
 }
 
 const exerciseUtil = {
+  handleRangeFilter,
   addTransText,
   getVideoId,
   getInfoVideo,

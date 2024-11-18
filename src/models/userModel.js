@@ -7,8 +7,7 @@ const userSchema = new Schema(
     email: {
       type: String,
       trim: true,
-      lowercase: true,
-      required: true
+      lowercase: true
     },
     username: {
       type: String,
@@ -33,8 +32,7 @@ const userSchema = new Schema(
     },
     picture: {
       type: String
-    },
-    levelWords: [String]
+    }
   },
   modelConfig
 )

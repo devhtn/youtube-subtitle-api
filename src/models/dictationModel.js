@@ -18,6 +18,10 @@ const dictationSchema = new Schema(
       type: Boolean,
       default: false
     },
+    replay: {
+      type: Boolean,
+      default: false
+    },
     completedSegmentsCount: {
       type: Number,
       default: 0
@@ -25,6 +29,9 @@ const dictationSchema = new Schema(
     totalCompletedSegments: {
       type: Number,
       required: true
+    },
+    score: {
+      type: Number
     },
     segments: {
       type: [

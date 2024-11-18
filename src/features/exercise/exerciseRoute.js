@@ -22,14 +22,18 @@ exerciseRoute
   .route('/dictation/:id')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
-    authorize('user'),
     exerciseController.getDictation
+  )
+exerciseRoute
+  .route('/dictation/:id')
+  .patch(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.updateDictation
   )
 exerciseRoute
   .route('/dictation/:dictationId/segment/:segmentId')
   .patch(
     passport.authenticate('passport-jwt', { session: false }),
-    authorize('user'),
     exerciseController.updateDictationSegment
   )
 exerciseRoute
@@ -39,16 +43,16 @@ exerciseRoute
     exerciseController.getExercises
   )
 exerciseRoute
+  .route('/categories')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.getCategories
+  )
+exerciseRoute
   .route('/user-dictation')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
     exerciseController.getUserDictations
-  )
-exerciseRoute
-  .route('/user-list')
-  .get(
-    passport.authenticate('passport-jwt', { session: false }),
-    exerciseController.getUserList
   )
 exerciseRoute
   .route('/:id')
@@ -57,22 +61,10 @@ exerciseRoute
     exerciseController.getExercise
   )
 exerciseRoute
-  .route('/comment')
-  .post(
-    passport.authenticate('passport-jwt', { session: false }),
-    exerciseController.createComment
-  )
-exerciseRoute
-  .route('/:exerciseId/comment')
+  .route('/:exerciseId/comments')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
     exerciseController.getExerciseComments
-  )
-exerciseRoute
-  .route('/comment/toggle-like')
-  .post(
-    passport.authenticate('passport-jwt', { session: false }),
-    exerciseController.toggleLikeComment
   )
 exerciseRoute
   .route('/toggle-like')

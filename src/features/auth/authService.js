@@ -7,14 +7,14 @@ import MyError from '~/utils/MyError'
 import env from '~/config/env'
 import userModel from '~/models/userModel'
 
-const register = async (info) => {
-  const { username, password } = info
+const register = async (dataFields) => {
+  const { username, password } = dataFields
   const isExist = await userModel.findOne({ username })
   if (isExist) throw new MyError('username already used', 409)
   const hashedPassword = await bcrypt.hash(password, 10)
-  info.password = hashedPassword
+  dataFields.password = hashedPassword
   const user = new userModel()
-  Object.assign(user, info)
+  Object.assign(user, dataFields)
   await user.save()
 
   // custom returned results
