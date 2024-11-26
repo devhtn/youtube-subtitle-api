@@ -25,7 +25,19 @@ const getUser = async (req, res) => {
   return res.status(201).json(user)
 }
 
+const getUserStatistic = async (req, res) => {
+  const response = await authService.getUserStatistic()
+  return res.status(201).json(response)
+}
+const getRankingUsers = async (req, res) => {
+  const userId = req.user.id
+  const response = await authService.getRankingUsers(userId)
+  return res.status(201).json(response)
+}
+
 const authController = {
+  getRankingUsers,
+  getUserStatistic,
   getUser,
   register,
   login,

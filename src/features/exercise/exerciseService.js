@@ -1,13 +1,15 @@
+import fs from 'fs'
+
 import _ from 'lodash'
 
 import MyError from '~/utils/MyError'
 
 import wordService from '../word/wordService'
 import exerciseUtil from './exerciseUtil'
+import oxfordData from './oxfordData.json'
 import commentModel from '~/models/commentModel'
 import dictationModel from '~/models/dictationModel'
 import exerciseModel from '~/models/exerciseModel'
-import wordListModel from '~/models/wordListModel'
 import { filterQuery } from '~/utils'
 
 const checkVideo = async (videoId) => {
@@ -28,10 +30,12 @@ const checkVideo = async (videoId) => {
 
   // Duyệt qua các segment để xử lý từng phần của video
   videoInfo.segments.forEach((segment) => {
-    const { lemmatizedWords, dictationWords, lengthWords } =
-      exerciseUtil.parseSub(segment.text)
+    const { lemmatizedWords, dictationWords, tags } = exerciseUtil.parseSub(
+      segment.text
+    )
     segment.dictationWords = dictationWords
     segment.lemmaSegmentWords = lemmatizedWords
+    segment.tags = tags
     // Thêm các từ vào Set để loại bỏ phần tử trùng lặp
     lemmatizedWords.forEach((word) => lemmaWordsSet.add(word))
     totalDictationWords += dictationWords.length
@@ -39,7 +43,7 @@ const checkVideo = async (videoId) => {
     const duration = segment.end - segment.start
     if (duration > 0) {
       totalTime += duration
-      totalWords += lengthWords
+      totalWords += tags.length
     }
   })
 
@@ -50,10 +54,9 @@ const checkVideo = async (videoId) => {
   videoInfo.lemmaWords = Array.from(lemmaWordsSet)
 
   // Tạo danh sách đối chiếu từ vựng với `wordLists`
-  const oxfordList = await wordListModel.findOne({ name: 'Oxford 3000' })
   videoInfo.difficult =
     lemmaWordsSet.size -
-    exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordList.words)
+    exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordData.words)
   const newVideoInfo = await exerciseUtil.addTransText(videoInfo)
 
   return newVideoInfo
@@ -424,7 +427,7 @@ const getExercises = async (query, userId) => {
   }
 
   const page = parseInt(query.page, 10) || 1
-  const limit = parseInt(query.limit, 10) || 2
+  const limit = parseInt(query.limit, 10) || 8
   const skip = (page - 1) * limit
 
   // Đặt giá trị mặc định cho sort và order nếu không có trong query
@@ -540,14 +543,20 @@ const toggleLikeExercise = async (exerciseId, user) => {
     throw new Error('Exercise not found')
   }
 
+  // Kiểm tra xem userId đã tồn tại trong dislikedUsers chưa
+  const isInDislikedUsers = exercise.dislikedUsers.includes(user.id)
+  if (isInDislikedUsers) {
+    throw new Error('Bạn không thể vừa thích và không thích bài tập này')
+  }
+
   // Kiểm tra xem userId đã tồn tại trong likedUsers chưa
   const userIndex = exercise.likedUsers.indexOf(user.id)
 
   if (userIndex === -1) {
-    // Nếu userId chưa có, thêm vào likedUsers và tăng lượt like
+    // Nếu userId chưa có, thêm vào likedUsers
     exercise.likedUsers.push(user.id)
   } else {
-    // Nếu userId đã có, xóa khỏi likedUsers và giảm lượt like
+    // Nếu userId đã có, xóa khỏi likedUsers
     exercise.likedUsers.splice(userIndex, 1)
   }
 
@@ -557,11 +566,82 @@ const toggleLikeExercise = async (exerciseId, user) => {
   return exercise.likedUsers
 }
 
+const toggleDislikeExercise = async (exerciseId, user) => {
+  // Tìm bài tập và kiểm tra tồn tại
+  const exercise = await exerciseModel.findById(exerciseId)
+  if (!exercise) {
+    throw new Error('Exercise not found')
+  }
+
+  // Kiểm tra xem userId đã tồn tại trong likedUsers chưa
+  const isInLikedUsers = exercise.likedUsers.includes(user.id)
+  if (isInLikedUsers) {
+    throw new Error('Bạn không thể vừa thích và không thích bài tập này')
+  }
+
+  // Kiểm tra xem userId đã tồn tại trong dislikedUsers chưa
+  const userIndex = exercise.dislikedUsers.indexOf(user.id)
+
+  if (userIndex === -1) {
+    // Nếu userId chưa có, thêm vào dislikedUsers
+    exercise.dislikedUsers.push(user.id)
+  } else {
+    // Nếu userId đã có, xóa khỏi dislikedUsers
+    exercise.dislikedUsers.splice(userIndex, 1)
+  }
+
+  // Lưu lại exercise sau khi cập nhật
+  await exercise.save()
+
+  return exercise.dislikedUsers
+}
+
+const getExerciseStatistic = async () => {
+  const result = await exerciseModel.aggregate([
+    // Thêm trường "monthYear" từ "createdAt"
+    {
+      $addFields: {
+        monthYear: { $dateToString: { format: '%m-%Y', date: '$createdAt' } }
+      }
+    },
+    // Nhóm theo "monthYear" để đếm số bài tập theo tháng
+    {
+      $group: {
+        _id: '$monthYear',
+        countExercise: { $sum: 1 }
+      }
+    },
+    // Định dạng lại kết quả
+    {
+      $project: {
+        _id: 0,
+        month: '$_id',
+        countExercise: 1
+      }
+    },
+    // Sắp xếp theo tháng-năm
+    { $sort: { month: 1 } }
+  ])
+
+  // Tính tổng số lượng bài tập
+  const totalExercises = result.reduce(
+    (total, item) => total + item.countExercise,
+    0
+  )
+
+  return {
+    statistic: result, // Thống kê bài tập theo tháng
+    totalExercises // Tổng số lượng bài tập
+  }
+}
+
 const exerciseService = {
+  getExerciseStatistic,
   delDictation,
   getUserDictations,
   createDictation,
   toggleLikeExercise,
+  toggleDislikeExercise,
   getExerciseComments,
   getExercise,
   getExercises,

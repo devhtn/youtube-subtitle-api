@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt'
 import { OAuth2Client } from 'google-auth-library'
 import jwt from 'jsonwebtoken'
+import mongoose from 'mongoose'
 
 import MyError from '~/utils/MyError'
 
@@ -70,7 +71,183 @@ const googleLogin = async (credential) => {
   return token
 }
 
+const getUserStatistic = async () => {
+  const result = await userModel.aggregate([
+    // Thêm trường "monthYear" từ "createdAt"
+    {
+      $addFields: {
+        monthYear: { $dateToString: { format: '%m-%Y', date: '$createdAt' } }
+      }
+    },
+    // Nhóm theo "monthYear" để đếm số người dùng trong từng tháng
+    {
+      $group: {
+        _id: '$monthYear',
+        countUser: { $sum: 1 }
+      }
+    },
+    // Định dạng lại dữ liệu
+    {
+      $project: {
+        _id: 0,
+        month: '$_id',
+        countUser: 1
+      }
+    },
+    // Sắp xếp theo tháng-năm
+    { $sort: { month: 1 } }
+  ])
+
+  // Tính tổng số lượng người dùng trong toàn bộ cơ sở dữ liệu
+  const totalUsers = result.reduce((total, item) => total + item.countUser, 0)
+
+  return {
+    statistic: result, // Thống kê theo tháng
+    totalUsers // Tổng số lượng người dùng
+  }
+}
+
+const getRankingUsers = async (userId) => {
+  const result = await userModel.aggregate([
+    // Lọc chỉ những user có role = 'user'
+    {
+      $match: {
+        role: 'user'
+      }
+    },
+    {
+      $lookup: {
+        from: 'dictations',
+        localField: '_id',
+        foreignField: 'userId',
+        as: 'userDictations'
+      }
+    },
+    {
+      $addFields: {
+        id: '$_id' // Tạo trường mới `id` sao chép từ `_id`
+      }
+    },
+    {
+      $lookup: {
+        from: 'words',
+        localField: '_id',
+        foreignField: 'userId',
+        as: 'userWords'
+      }
+    },
+    {
+      $project: {
+        id: 1,
+        name: 1,
+        countExercise: {
+          $size: {
+            $filter: {
+              input: '$userDictations',
+              as: 'dictation',
+              cond: { $eq: ['$$dictation.isCompleted', true] }
+            }
+          }
+        },
+        avgScore: {
+          $cond: {
+            if: {
+              $gt: [
+                {
+                  $size: {
+                    $filter: {
+                      input: '$userDictations',
+                      as: 'dictation',
+                      cond: { $eq: ['$$dictation.isCompleted', true] }
+                    }
+                  }
+                },
+                0
+              ]
+            },
+            then: {
+              $divide: [
+                {
+                  $sum: {
+                    $map: {
+                      input: {
+                        $filter: {
+                          input: '$userDictations',
+                          as: 'dictation',
+                          cond: { $eq: ['$$dictation.isCompleted', true] }
+                        }
+                      },
+                      as: 'completedDictation',
+                      in: '$$completedDictation.score'
+                    }
+                  }
+                },
+                {
+                  $size: {
+                    $filter: {
+                      input: '$userDictations',
+                      as: 'dictation',
+                      cond: { $eq: ['$$dictation.isCompleted', true] }
+                    }
+                  }
+                }
+              ]
+            },
+            else: 0
+          }
+        },
+        accumulatedWord: {
+          $size: {
+            $filter: {
+              input: '$userWords',
+              as: 'word',
+              cond: { $eq: ['$$word.expired', false] }
+            }
+          }
+        }
+      }
+    },
+    // Thêm trường sortKey để gộp các tiêu chí sắp xếp
+    {
+      $addFields: {
+        sortKey: {
+          $add: [
+            { $multiply: ['$accumulatedWord', 1000000] }, // Ưu tiên từ vựng tích lũy
+            '$avgScore' // Thêm điểm trung bình vào
+          ]
+        }
+      }
+    },
+    // Sắp xếp và thêm thứ hạng
+    {
+      $setWindowFields: {
+        sortBy: { sortKey: -1 }, // Sắp xếp theo sortKey
+        output: {
+          ranking: { $rank: {} } // Thêm cột xếp hạng
+        }
+      }
+    },
+    // Tách kết quả thành 2 phần: topUsers và targetUser
+    {
+      $facet: {
+        topUsers: [{ $limit: 10 }], // Giới hạn danh sách top 10
+        targetUser: [{ $match: { _id: new mongoose.Types.ObjectId(userId) } }] // Tìm thông tin của userId
+      }
+    }
+  ])
+
+  const topUsers = result[0]?.topUsers || []
+  const targetUser = result[0]?.targetUser[0] || null
+
+  return {
+    topUsers,
+    targetUser
+  }
+}
+
 const authService = {
+  getRankingUsers,
+  getUserStatistic,
   login,
   register,
   googleLogin

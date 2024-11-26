@@ -14,5 +14,17 @@ authRoute
     passport.authenticate('passport-jwt', { session: false }),
     authController.getUser
   )
+authRoute
+  .route('/statistic')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    authController.getUserStatistic
+  )
+authRoute
+  .route('/ranking')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    authController.getRankingUsers
+  )
 
 export default authRoute

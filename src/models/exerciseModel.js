@@ -30,6 +30,12 @@ const exerciseSchema = new Schema(
         ref: 'User'
       }
     ],
+    dislikedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
     commentedUsers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -97,6 +103,7 @@ const exerciseSchema = new Schema(
           text: {
             type: String
           },
+          tags: [],
           transText: {
             type: String
           },

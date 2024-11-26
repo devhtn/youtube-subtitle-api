@@ -55,12 +55,6 @@ exerciseRoute
     exerciseController.getUserDictations
   )
 exerciseRoute
-  .route('/:id')
-  .get(
-    passport.authenticate('passport-jwt', { session: false }),
-    exerciseController.getExercise
-  )
-exerciseRoute
   .route('/:exerciseId/comments')
   .get(
     passport.authenticate('passport-jwt', { session: false }),
@@ -73,6 +67,12 @@ exerciseRoute
     exerciseController.toggleLikeExercise
   )
 exerciseRoute
+  .route('/toggle-dislike')
+  .post(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.toggleDislikeExercise
+  )
+exerciseRoute
   .route('/dictation')
   .post(
     passport.authenticate('passport-jwt', { session: false }),
@@ -83,6 +83,19 @@ exerciseRoute
   .delete(
     passport.authenticate('passport-jwt', { session: false }),
     exerciseController.delDictation
+  )
+exerciseRoute
+  .route('/statistic')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.getExerciseStatistic
+  )
+// Có params phải để dưới cùng, tránh ảnh hưởng tới những router đầu
+exerciseRoute
+  .route('/:id')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    exerciseController.getExercise
   )
 
 export default exerciseRoute

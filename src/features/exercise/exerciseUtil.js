@@ -167,7 +167,7 @@ const getInfoVideo = async (videoId) => {
 
 const parseSub = (text) => {
   // loại bỏ dấu ngoặc kép, nó có thể làm thay đổi tags
-  const cleanedText = text.replace(/“|”|"/g, '')
+  const cleanedText = text.replace(/[^a-zA-Z0-9\s.,!?;:'"-]/g, '')
   const textTags = nlp(cleanedText).out('tags')
 
   let mergedTextTags = textTags.reduce((acc, obj) => {
@@ -185,7 +185,20 @@ const parseSub = (text) => {
     )
   })
 
-  const allArrayWords = cleanedText.replace(/\s+/g, ' ').split(' ')
+  const allArrayWords = cleanedText.replace(/\s+/g, ' ').trim().split(' ')
+
+  // xử lý thêm các tag gợi ý
+  const newCleanTags = allArrayWords.map((word) => {
+    const cleanWord = word
+      .replace(/^[^a-zA-Z0-9]+/, '')
+      .replace(/[^a-zA-Z0-9]+$/, '')
+    const foundTag = cleanTags.find(
+      ([tagWord]) => tagWord === cleanWord.toLowerCase()
+    )
+    return foundTag ? foundTag[1].join(', ') : 'Contractions'
+  })
+
+  // xử lý lấy từ vựng cần chép chính tả
   const arrayWords = [...new Set(allArrayWords)]
   const dictationWords = []
   arrayWords.forEach((word) => {
@@ -249,7 +262,7 @@ const parseSub = (text) => {
     if (lemma.length > 1) lemma = [word]
     lemmatizedWords.push(...lemma)
   })
-  return { lemmatizedWords, dictationWords, lengthWords: allArrayWords.length }
+  return { lemmatizedWords, dictationWords, tags: newCleanTags }
 }
 
 const calcWordMatch = (words, wordList) => {
