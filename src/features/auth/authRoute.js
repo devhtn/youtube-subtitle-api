@@ -2,6 +2,7 @@ import express from 'express'
 import passport from 'passport'
 
 import authController from './authController'
+import upload from '~/middlewares/upload'
 
 const authRoute = express.Router()
 
@@ -25,6 +26,13 @@ authRoute
   .get(
     passport.authenticate('passport-jwt', { session: false }),
     authController.getRankingUsers
+  )
+authRoute
+  .route('')
+  .patch(
+    passport.authenticate('passport-jwt', { session: false }),
+    upload.single('picture'),
+    authController.updateInfo
   )
 
 export default authRoute

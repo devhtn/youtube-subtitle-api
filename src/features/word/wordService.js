@@ -88,7 +88,13 @@ const getForgetWords = async (userId) => {
   return forgottenWords.map((doc) => doc.word)
 }
 
+const getLevel = async (userId) => {
+  const words = await wordModel.find({ userId, expired: false })
+  return words.length
+}
+
 const wordService = {
+  getLevel,
   getForgetWords,
   refreshWords,
   addWords

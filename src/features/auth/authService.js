@@ -71,6 +71,37 @@ const googleLogin = async (credential) => {
   return token
 }
 
+const updateInfo = async (dataFields, file, userId) => {
+  if (file) dataFields.picture = file.path
+  else delete dataFields.picture
+  console.log(file)
+
+  const allowedFields = ['password', 'name', 'picture']
+  const filteredData = Object.keys(dataFields)
+    .filter((key) => allowedFields.includes(key))
+    .reduce((obj, key) => {
+      obj[key] = dataFields[key]
+      return obj
+    }, {})
+  if (Object.keys(filteredData).length === 0) {
+    throw new MyError('No valid fields to update')
+  }
+
+  console.log(filteredData)
+
+  const updatedUser = await userModel.findByIdAndUpdate(
+    userId,
+    { $set: filteredData },
+    { new: true, runValidators: true }
+  )
+
+  if (!updatedUser) {
+    throw new MyError('User not found')
+  }
+
+  return filteredData
+}
+
 const getUserStatistic = async () => {
   const result = await userModel.aggregate([
     // Thêm trường "monthYear" từ "createdAt"
@@ -140,6 +171,7 @@ const getRankingUsers = async (userId) => {
       $project: {
         id: 1,
         name: 1,
+        picture: 1,
         countExercise: {
           $size: {
             $filter: {
@@ -246,6 +278,7 @@ const getRankingUsers = async (userId) => {
 }
 
 const authService = {
+  updateInfo,
   getRankingUsers,
   getUserStatistic,
   login,

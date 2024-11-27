@@ -12,15 +12,16 @@ import dictationModel from '~/models/dictationModel'
 import exerciseModel from '~/models/exerciseModel'
 import { filterQuery } from '~/utils'
 
-const checkVideo = async (videoId) => {
+const checkVideo = async (videoId, userId) => {
   // Kiểm tra nếu đã tồn tại bài tập với videoId, trả về nếu có
   let existExercise = await exerciseModel
     .findOne({ videoId: videoId })
     .populate([{ path: 'firstUserId' }, { path: 'userId' }])
   if (existExercise) return existExercise
 
-  // Lấy thông tin video từ `exerciseUtil`
-  const videoInfo = await exerciseUtil.getInfoVideo(videoId)
+  // Lấy thông tin video và kiểm tra tính phù hợp
+  const level = await wordService.getLevel(userId)
+  const videoInfo = await exerciseUtil.getInfoVideo(videoId, level)
 
   // Khởi tạo các Set để lưu trữ từ duy nhất và các biến đếm
   let lemmaWordsSet = new Set()
@@ -163,7 +164,7 @@ const createExercise = async (videoInfo, user) => {
 
   // Nếu đã có dictation, ném lỗi
   if (dictation) {
-    throw new MyError('Bài tập này đã được bạn hoàn thành trước đó', 410)
+    throw new MyError('Bài tập này đã được bạn hoàn thành', 410)
   }
 
   // Nếu exercise không tồn tại, tạo exercise mới

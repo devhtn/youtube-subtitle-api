@@ -92,13 +92,15 @@ function getVideoId(url) {
   return null
 }
 
-const getInfoVideo = async (videoId) => {
+const getInfoVideo = async (videoId, level) => {
   // Lấy thông tin videoInfo
   const video = await ytdl.getInfo(videoId)
   if (!video.player_response.captions)
     throw new MyError('Video không có subtitles')
 
   const videoDetails = video.videoDetails
+  if (level < 1000 && videoDetails.lengthSeconds > 240)
+    throw new MyError('Cần đạt ít nhất level 1000 để xem video trên 4 phút')
   if (videoDetails.lengthSeconds > 1200)
     throw new MyError('Thời lượng không nên quá 20 phút')
   const videoInfo = {}

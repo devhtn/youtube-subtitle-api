@@ -35,7 +35,16 @@ const getRankingUsers = async (req, res) => {
   return res.status(201).json(response)
 }
 
+const updateInfo = async (req, res) => {
+  const body = req.body
+  const userId = req.user.id
+  const file = req.file
+  const response = await authService.updateInfo(body, file, userId)
+  return res.status(201).json(response)
+}
+
 const authController = {
+  updateInfo,
   getRankingUsers,
   getUserStatistic,
   getUser,
