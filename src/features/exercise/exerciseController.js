@@ -4,17 +4,21 @@ import exerciseService from './exerciseService'
 import exerciseUtil from './exerciseUtil'
 
 const checkVideo = async (req, res) => {
+  const user = req.user
   const { link } = req.body
   const videoId = exerciseUtil.getVideoId(link)
-  if (!videoId) throw new MyError('Đường dẫn không hợp lệ')
-  const response = await exerciseService.checkVideo(videoId)
+  if (!videoId) throw new MyError('Kiểm tra lại đường dẫn của bạn !')
+  const response = await exerciseService.checkVideo(videoId, user)
   return res.status(201).json(response)
 }
 
 const createExercise = async (req, res) => {
   const videoInfo = req.body
   const user = req.user
-  const response = await exerciseService.createExercise(videoInfo, user)
+  let response
+  if (user.role === 'admin')
+    response = await exerciseService.createPublicExercise(videoInfo, user.id)
+  else response = await exerciseService.createExercise(videoInfo, user)
   return res.status(201).json(response)
 }
 

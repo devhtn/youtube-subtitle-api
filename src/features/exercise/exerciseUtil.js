@@ -73,6 +73,8 @@ function getVideoId(url) {
   const regexStandard =
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/
   const regexShort = /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/
+  const regexShorts =
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/
 
   // Thử khớp với đường dẫn chuẩn
   const matchStandard = url.match(regexStandard)
@@ -88,6 +90,13 @@ function getVideoId(url) {
     return isValidYouTubeVideoId(videoId) ? videoId : null
   }
 
+  // Thử khớp với đường dẫn của Shorts
+  const matchShorts = url.match(regexShorts)
+  if (matchShorts && matchShorts[1]) {
+    const videoId = matchShorts[1]
+    return isValidYouTubeVideoId(videoId) ? videoId : null
+  }
+
   // Nếu không khớp, trả về null
   return null
 }
@@ -99,7 +108,7 @@ const getInfoVideo = async (videoId, level) => {
     throw new MyError('Video không có subtitles')
 
   const videoDetails = video.videoDetails
-  if (level < 1000 && videoDetails.lengthSeconds > 240)
+  if (level !== undefined && level < 1000 && videoDetails.lengthSeconds > 240)
     throw new MyError('Cần đạt ít nhất level 1000 để xem video trên 4 phút')
   if (videoDetails.lengthSeconds > 1200)
     throw new MyError('Thời lượng không nên quá 20 phút')
@@ -114,11 +123,12 @@ const getInfoVideo = async (videoId, level) => {
   const tracks =
     video.player_response.captions.playerCaptionsTracklistRenderer.captionTracks
 
-  const asrTrack = tracks.find((track) => track.kind === 'asr')
-  if (asrTrack && !asrTrack.languageCode.startsWith('en'))
-    throw new MyError(
-      `Không hỗ trợ video tiếng ${asrTrack.name.simpleText.replace(/\s*\([^)]*\)/g, '').trim()} `
-    )
+  // Đoạn này tìm loại ngôn ngữ tự động tạo trong danh sách subtitles
+  // const asrTrack = tracks.find((track) => track.kind === 'asr')
+  // if (asrTrack && !asrTrack.languageCode.startsWith('en'))
+  //   throw new MyError(
+  //     `Không hỗ trợ video tiếng ${asrTrack.name.simpleText.replace(/\s*\([^)]*\)/g, '').trim()} `
+  //   )
 
   let subtitleTrack = tracks.find(
     (track) => track.languageCode.startsWith('en') && track.kind !== 'asr'
@@ -157,13 +167,18 @@ const getInfoVideo = async (videoId, level) => {
               text
             })
           }
-          videoInfo.segments = segments
-          resolve(videoInfo) // Trả về JSON
+          // Kiểm tra nếu segments rỗng
+          if (segments.length === 0) {
+            reject(new MyError('Phụ đề của video không hợp lệ!'))
+          } else {
+            videoInfo.segments = segments
+            resolve(videoInfo) // Trả về JSON
+          }
         }
       })
     })
   } else {
-    throw new MyError('Video không có phụ đề')
+    throw new MyError('Video không có phụ đề!')
   }
 }
 

@@ -10,57 +10,78 @@ import oxfordData from './oxfordData.json'
 import commentModel from '~/models/commentModel'
 import dictationModel from '~/models/dictationModel'
 import exerciseModel from '~/models/exerciseModel'
+import wordModel from '~/models/wordModel'
 import { filterQuery } from '~/utils'
 
-const checkVideo = async (videoId, userId) => {
-  // Kiểm tra nếu đã tồn tại bài tập với videoId, trả về nếu có
-  let existExercise = await exerciseModel
-    .findOne({ videoId: videoId })
-    .populate([{ path: 'firstUserId' }, { path: 'userId' }])
-  if (existExercise) return existExercise
+const checkVideo = async (videoId, user) => {
+  const TIMEOUT_DURATION = 10000 // 10 giây
 
-  // Lấy thông tin video và kiểm tra tính phù hợp
-  const level = await wordService.getLevel(userId)
-  const videoInfo = await exerciseUtil.getInfoVideo(videoId, level)
-
-  // Khởi tạo các Set để lưu trữ từ duy nhất và các biến đếm
-  let lemmaWordsSet = new Set()
-  let totalDictationWords = 0
-  let totalTime = 0
-  let totalWords = 0
-
-  // Duyệt qua các segment để xử lý từng phần của video
-  videoInfo.segments.forEach((segment) => {
-    const { lemmatizedWords, dictationWords, tags } = exerciseUtil.parseSub(
-      segment.text
-    )
-    segment.dictationWords = dictationWords
-    segment.lemmaSegmentWords = lemmatizedWords
-    segment.tags = tags
-    // Thêm các từ vào Set để loại bỏ phần tử trùng lặp
-    lemmatizedWords.forEach((word) => lemmaWordsSet.add(word))
-    totalDictationWords += dictationWords.length
-    // Tính thời gian và số từ
-    const duration = segment.end - segment.start
-    if (duration > 0) {
-      totalTime += duration
-      totalWords += tags.length
-    }
+  // Hàm timeout để thông báo người dùng nếu quá thời gian
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new MyError('Quá thời gian xử lý, vui lòng thử lại sau'))
+    }, TIMEOUT_DURATION)
   })
 
-  // Tính tốc độ trung bình và số lượng từ duy nhất trong dictationWords
-  videoInfo.avgSpeed =
-    totalTime > 0 ? ((totalWords * 60) / totalTime).toFixed(0) : 0
-  videoInfo.totalDictationWords = totalDictationWords
-  videoInfo.lemmaWords = Array.from(lemmaWordsSet)
+  // Hàm chính của checkVideo
+  const mainPromise = (async () => {
+    // Kiểm tra nếu đã tồn tại bài tập với videoId, trả về nếu có
+    let existExercise = await exerciseModel
+      .findOne({ videoId: videoId })
+      .populate([{ path: 'firstUserId' }, { path: 'userId' }])
+    if (existExercise) return existExercise
 
-  // Tạo danh sách đối chiếu từ vựng với `wordLists`
-  videoInfo.difficult =
-    lemmaWordsSet.size -
-    exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordData.words)
-  const newVideoInfo = await exerciseUtil.addTransText(videoInfo)
+    // Lấy thông tin video và kiểm tra tính phù hợp
+    let videoInfo
+    if (user.role === 'admin') {
+      videoInfo = await exerciseUtil.getInfoVideo(videoId)
+    } else {
+      const level = await wordService.getLevel(user.id)
+      videoInfo = await exerciseUtil.getInfoVideo(videoId, level)
+    }
 
-  return newVideoInfo
+    // Khởi tạo các Set để lưu trữ từ duy nhất và các biến đếm
+    let lemmaWordsSet = new Set()
+    let totalDictationWords = 0
+    let totalTime = 0
+    let totalWords = 0
+
+    // Duyệt qua các segment để xử lý từng phần của video
+    videoInfo.segments.forEach((segment) => {
+      const { lemmatizedWords, dictationWords, tags } = exerciseUtil.parseSub(
+        segment.text
+      )
+      segment.dictationWords = dictationWords
+      segment.lemmaSegmentWords = lemmatizedWords
+      segment.tags = tags
+      // Thêm các từ vào Set để loại bỏ phần tử trùng lặp
+      lemmatizedWords.forEach((word) => lemmaWordsSet.add(word))
+      totalDictationWords += dictationWords.length
+      // Tính thời gian và số từ
+      const duration = segment.end - segment.start
+      if (duration > 0) {
+        totalTime += duration
+        totalWords += tags.length
+      }
+    })
+
+    // Tính tốc độ trung bình và số lượng từ duy nhất trong dictationWords
+    videoInfo.avgSpeed =
+      totalTime > 0 ? ((totalWords * 60) / totalTime).toFixed(0) : 0
+    videoInfo.totalDictationWords = totalDictationWords
+    videoInfo.lemmaWords = Array.from(lemmaWordsSet)
+
+    // Tạo danh sách đối chiếu từ vựng với `wordLists`
+    videoInfo.difficult =
+      lemmaWordsSet.size -
+      exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordData.words)
+    const newVideoInfo = await exerciseUtil.addTransText(videoInfo)
+
+    return newVideoInfo
+  })()
+
+  // Trả về Promise.race giữa mainPromise và timeoutPromise
+  return Promise.race([mainPromise, timeoutPromise])
 }
 
 const delDictation = async (dictationId) => {
@@ -109,6 +130,12 @@ const createDictation = async (exerciseId, userId) => {
     throw new MyError('Không tìm thấy bài tập với ID này', 404)
   }
 
+  const level = await wordService.getLevel(userId)
+  if (level < 1000 && exercise.duration > 240)
+    throw new MyError(
+      'Bạn cần đạt ít nhất cấp độ 1000 để làm bài tập trên 4 phút!'
+    )
+
   const dictationSegments = [] // Mảng để lưu các segment đã được ánh xạ
   let totalCompletedSegments = 0 // Biến để đếm số lượng segment hợp lệ
 
@@ -134,6 +161,21 @@ const createDictation = async (exerciseId, userId) => {
     totalCompletedSegments // Sử dụng tổng số đã tính toán
   })
   return newDictation
+}
+
+const createPublicExercise = async (videoInfo, userId) => {
+  const isExist = await exerciseModel
+    .findOne({ videoId: videoInfo.videoId })
+    .lean()
+
+  if (isExist) throw new MyError('Bài tập đã tồn tại trên hệ thống')
+
+  const exercise = await exerciseModel.create({
+    ...videoInfo,
+    isPublic: true,
+    userId
+  })
+  return exercise
 }
 
 const createExercise = async (videoInfo, user) => {
@@ -490,7 +532,7 @@ const getExercises = async (query, userId) => {
 
   // Nhóm các bài tập theo category và đếm số lượng bài tập cho từng category
 
-  return { exercises, totalPages }
+  return { exercises, totalPages, totalExercises }
 }
 
 const getCategories = async () => {
@@ -637,6 +679,7 @@ const getExerciseStatistic = async () => {
 }
 
 const exerciseService = {
+  createPublicExercise,
   getExerciseStatistic,
   delDictation,
   getUserDictations,

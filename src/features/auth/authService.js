@@ -29,10 +29,10 @@ const login = async (userInfo) => {
     { createdAt: 0, updatedAt: 0 }
   )
 
-  if (!user) throw new MyError('username does not exist', 401)
+  if (!user) throw new MyError('Tên đăng nhập không tồn tại!', 401)
 
   const isMatch = await bcrypt.compare(password, user.password)
-  if (!isMatch) throw new MyError('password is wrong', 401)
+  if (!isMatch) throw new MyError('Sai mật khẩu', 401)
 
   const payload = { id: user._id, role: user.role }
   const token = jwt.sign(payload, env.TOKEN_SECRET, { expiresIn: '30d' })
