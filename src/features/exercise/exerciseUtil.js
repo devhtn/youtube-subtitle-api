@@ -7,6 +7,54 @@ import ytdl from 'ytdl-core'
 
 import MyError from '~/utils/MyError'
 
+const tagTranslations = {
+  // Danh từ
+  Noun: 'Danh từ',
+  Singular: 'Danh từ số ít',
+  Plural: 'Danh từ số nhiều',
+
+  // Động từ
+  Verb: 'Động từ',
+  Infinitive: 'Động từ nguyên mẫu',
+  PresentTense: 'Thì hiện tại',
+  PastTense: 'Thì quá khứ',
+  Gerund: 'Danh động từ (V-ing)',
+  Participle: 'Phân từ (V-ed/V-ing)',
+  Modal: 'Động từ khuyết thiếu',
+  Auxiliary: 'Trợ động từ',
+
+  // Tính từ
+  Adjective: 'Tính từ',
+  Comparative: 'So sánh hơn',
+  Superlative: 'So sánh nhất',
+
+  // Trạng từ
+  Adverb: 'Trạng từ',
+
+  // Đại từ
+  Pronoun: 'Đại từ',
+  Possessive: 'Sở hữu từ',
+
+  // Giới từ, Liên từ, Từ hạn định
+  Preposition: 'Giới từ',
+  Conjunction: 'Liên từ',
+  Determiner: 'Từ hạn định',
+
+  // Khác
+  Article: 'Mạo từ (a, an, the)',
+  Interjection: 'Thán từ',
+  Number: 'Số từ',
+  Ordinal: 'Số thứ tự',
+  Cardinal: 'Số đếm',
+  QuestionWord: 'Từ để hỏi',
+  Negation: 'Từ phủ định',
+  Contraction: 'Từ rút gọn',
+  Value: 'Chỉ số lượng',
+  Expression: 'Từ nhấn mạnh',
+  Undefined: 'Không xác định'
+}
+const validTags = Object.keys(tagTranslations)
+
 // Function to handle range filtering
 const handleRangeFilter = (filter, key) => {
   if (filter[key]) {
@@ -183,8 +231,13 @@ const getInfoVideo = async (videoId, level) => {
 }
 
 const parseSub = (text) => {
-  // loại bỏ dấu ngoặc kép, nó có thể làm thay đổi tags
-  const cleanedText = text.replace(/[^a-zA-Z0-9\s.,!?;:'"-]/g, '')
+  // youtube subtitle đã có sẵn một số quy tắt để đảm bảo phụ đề chuẩn, chỉ cần chỉnh sửa
+  // loại bỏ phần văn bản bắt đầu bằng ( hoặc [ và kế thúc ) hoặc ]
+  const cleanedText = text
+    .replace(/[[(].*?[\])]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
   const textTags = nlp(cleanedText).out('tags')
 
   let mergedTextTags = textTags.reduce((acc, obj) => {
@@ -202,59 +255,40 @@ const parseSub = (text) => {
     )
   })
 
-  const allArrayWords = cleanedText.replace(/\s+/g, ' ').trim().split(' ')
-
-  // xử lý thêm các tag gợi ý
-  const newCleanTags = allArrayWords.map((word) => {
-    const cleanWord = word
-      .replace(/^[^a-zA-Z0-9]+/, '')
-      .replace(/[^a-zA-Z0-9]+$/, '')
-    const foundTag = cleanTags.find(
-      ([tagWord]) => tagWord === cleanWord.toLowerCase()
-    )
-    return foundTag ? foundTag[1].join(', ') : 'Contractions'
-  })
-
+  const allArrayWords = cleanedText.split(' ')
   // xử lý lấy từ vựng cần chép chính tả
-  const arrayWords = [...new Set(allArrayWords)]
-  const dictationWords = []
-  arrayWords.forEach((word) => {
+  const dictationWords = new Set()
+  const newCleanTags = []
+  allArrayWords.forEach((word) => {
     // Loại bỏ dấu ' đầu và cuối, đồng thời những kí tự đặc biệt
     const cleanWord = word
       .replace(/^[^a-zA-Z0-9]+/, '')
       .replace(/[^a-zA-Z0-9]+$/, '')
 
+    const isContraction = /[']/.test(cleanWord)
     // Tìm kiếm trong sentenceTags
     const found = cleanTags.find((el) => el[0] === cleanWord.toLowerCase())
-    // Kiểm tra nếu là dạng từ viết tắt (contraction)
-    const isContraction = /['’]/.test(cleanWord)
 
-    if (isContraction) {
-      if (!found || found[1].includes('Possessive')) {
-        // Xét trường hợp có dấu ' nhưng là dạng sở hữu, không phải viết tắt
-        if (found) {
-          const possTag = Object.entries(
-            nlp(cleanWord.split("'")[0]).out('tags')[0]
-          )[0]
-          if (!possTag[1].includes('ProperNoun')) {
-            dictationWords.push(cleanWord)
-          }
-        }
-        // Trường hợp có dấu ' và phát hiện viết tắt
-        else {
-          dictationWords.push(cleanWord)
-        }
+    let validTranslatedTags = []
+    if (found) {
+      //xử lý các tag gợi ý
+      if (!found[1].includes('ProperNoun')) {
+        validTranslatedTags = found[1].filter((tag) => validTags.includes(tag))
+        if (validTranslatedTags.length > 0) dictationWords.add(cleanWord)
       }
-      cleanTags = cleanTags.filter((el) => el[0] !== cleanWord.toLowerCase())
-    } else if (found) {
-      if (
-        !(found[1].includes('ProperNoun') && /^[A-Z]/.test(cleanWord)) ||
-        (found[1].includes('Pronoun') && found[1].includes('ProperNoun'))
-      ) {
-        dictationWords.push(cleanWord)
-      } else
-        cleanTags = cleanTags.filter((el) => el[0] !== cleanWord.toLowerCase())
     }
+    // Trường hợp không tìm thấy, tức là từ viết tắt đã bị tách ra làm 2 thành phần
+    else if (isContraction) {
+      dictationWords.add(cleanWord)
+      validTranslatedTags.push('Contraction')
+    } else validTranslatedTags.push('Undefined')
+
+    const textTags =
+      validTranslatedTags.map((tag) => tagTranslations[tag]).join(' - ') ||
+      'Không xác định' // Ghép tag thành chuỗi
+    if (!textTags)
+      cleanTags = cleanTags.filter((el) => el[0] !== cleanWord.toLowerCase())
+    newCleanTags.push(textTags)
   })
 
   const lemmatizedWords = []
@@ -279,7 +313,11 @@ const parseSub = (text) => {
     if (lemma.length > 1) lemma = [word]
     lemmatizedWords.push(...lemma)
   })
-  return { lemmatizedWords, dictationWords, tags: newCleanTags }
+  return {
+    lemmatizedWords,
+    dictationWords: [...dictationWords],
+    tags: [...newCleanTags]
+  }
 }
 
 const calcWordMatch = (words, wordList) => {

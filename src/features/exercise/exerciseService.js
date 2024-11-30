@@ -10,7 +10,6 @@ import oxfordData from './oxfordData.json'
 import commentModel from '~/models/commentModel'
 import dictationModel from '~/models/dictationModel'
 import exerciseModel from '~/models/exerciseModel'
-import wordModel from '~/models/wordModel'
 import { filterQuery } from '~/utils'
 
 const checkVideo = async (videoId, user) => {
@@ -48,6 +47,12 @@ const checkVideo = async (videoId, user) => {
 
     // Duyệt qua các segment để xử lý từng phần của video
     videoInfo.segments.forEach((segment) => {
+      segment.text = segment.text
+        .replace(/\s+/g, ' ') // Thay thế các khoảng trắng đặc biệt
+        .trim() // Loại bỏ khoảng trắng ở đầu và cuối
+        .replace(/’/g, "'") // Đổi tất cả dấu nháy móc thành nháy thẳng
+        .replace(/\s*'\s*/g, "'") // Loại bỏ khoảng trắng ở trước và sau dấu '
+        .replace(/\s{2,}/g, ' ') // Thay thế tất cả những chỗ có 2 khoảng trắng trở lên bằng 1 khoảng trắng
       const { lemmatizedWords, dictationWords, tags } = exerciseUtil.parseSub(
         segment.text
       )

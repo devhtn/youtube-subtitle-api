@@ -12,17 +12,27 @@ export const setupSocket = (_io) => {
   io.on('connection', (socket) => {
     console.log('A user connected:', socket.id)
 
-    // Sự kiện khi user đăng ký userId
     socket.on('register', (userId) => {
-      socket.userId = userId // Gắn userId vào socket
-      userSocketMap.set(userId, socket) // Lưu userId vào Map
-      console.log(`User registered with ID: ${userId}`)
+      socket.userId = userId
+      if (!userSocketMap.has(userId)) {
+        userSocketMap.set(userId, new Set())
+        io.emit('user-online', userId) // Thông báo user online
+      }
+      userSocketMap.get(userId).add(socket)
+
+      socket.emit('online-users', Array.from(userSocketMap.keys()))
     })
 
-    // Xử lý sự kiện ngắt kết nối
     socket.on('disconnect', () => {
       if (socket.userId) {
-        userSocketMap.delete(socket.userId) // Xóa userId khỏi Map
+        const sockets = userSocketMap.get(socket.userId)
+        if (sockets) {
+          sockets.delete(socket)
+          if (sockets.size === 0) {
+            userSocketMap.delete(socket.userId)
+            io.emit('user-offline', socket.userId) // Thông báo user offline
+          }
+        }
         console.log(`User with ID ${socket.userId} disconnected`)
       }
     })
@@ -35,12 +45,22 @@ export const setupSocket = (_io) => {
  * @param {string} message - Nội dung tin nhắn
  */
 export const sendMessageToUser = (userId, eventName, data) => {
-  const socket = userSocketMap.get(userId) // Lấy socket dựa trên userId
-  if (socket) {
-    socket.emit(eventName, data) // Gửi sự kiện và dữ liệu kèm theo
+  const sockets = userSocketMap.get(userId)
+  if (sockets && sockets.size > 0) {
+    sockets.forEach((socket) => {
+      socket.emit(eventName, data)
+    })
   } else {
     console.log(`User with ID ${userId} not found`)
   }
+}
+
+export const sendMessageToAllUsers = (eventName, data) => {
+  userSocketMap.forEach((sockets) => {
+    sockets.forEach((socket) => {
+      socket.emit(eventName, data)
+    })
+  })
 }
 
 /**

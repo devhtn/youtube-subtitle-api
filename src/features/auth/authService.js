@@ -11,7 +11,7 @@ import userModel from '~/models/userModel'
 const register = async (dataFields) => {
   const { username, password } = dataFields
   const isExist = await userModel.findOne({ username })
-  if (isExist) throw new MyError('username already used', 409)
+  if (isExist) throw new MyError('Tên đăng nhập đã tồn tại', 409)
   const hashedPassword = await bcrypt.hash(password, 10)
   dataFields.password = hashedPassword
   const user = new userModel()
