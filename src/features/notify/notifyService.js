@@ -22,11 +22,31 @@ const notifyComment = async (recipientUserId, senderUser, newComment) => {
   return newNotify
 }
 
+const createNotifyExercise = async (recipientUserId, exercise) => {
+  const newNotify = await notifyModel.create({
+    userId: recipientUserId,
+    message: `Video này đang bị cộng đồng report`,
+    type: 'Exercise',
+    relatedId: exercise.id
+  })
+  newNotify.relatedId = exercise
+
+  sendMessageToUser(recipientUserId, 'exercise', newNotify)
+
+  return newNotify
+}
+
 const getUserNotifies = async (userId) => {
   const notifies = await notifyModel
     .find({ userId })
     .sort({ createdAt: -1 }) // -1 là sắp xếp giảm dần (mới nhất trước)
-    .populate('relatedId')
+    .populate({
+      path: 'relatedId', // Populate trường relatedId
+      populate: {
+        path: 'userId', // Tiếp tục populate trường userId bên trong relatedId
+        model: 'User' // Tên model của userId (nếu cần)
+      }
+    })
   return notifies
 }
 const updateNotify = async (id, dataFields) => {
@@ -44,6 +64,11 @@ const updateNotify = async (id, dataFields) => {
   return updatedNotify
 }
 
-const notifyService = { notifyComment, getUserNotifies, updateNotify }
+const notifyService = {
+  notifyComment,
+  getUserNotifies,
+  updateNotify,
+  createNotifyExercise
+}
 
 export default notifyService

@@ -4,12 +4,15 @@ import _ from 'lodash'
 
 import MyError from '~/utils/MyError'
 
+import notifyService from '../notify/notifyService'
 import wordService from '../word/wordService'
 import exerciseUtil from './exerciseUtil'
 import oxfordData from './oxfordData.json'
 import commentModel from '~/models/commentModel'
 import dictationModel from '~/models/dictationModel'
 import exerciseModel from '~/models/exerciseModel'
+import { notifyModel } from '~/models/notifyModel'
+import userModel from '~/models/userModel'
 import { filterQuery } from '~/utils'
 
 const checkVideo = async (videoId, user) => {
@@ -248,6 +251,26 @@ const createExercise = async (videoInfo, user) => {
   })
 
   return exercise
+}
+
+const toggleLockExercise = async (exerciseId) => {
+  const exercise = await exerciseModel.findById(exerciseId)
+
+  if (!exercise) {
+    throw new Error('Exercise not found')
+  }
+
+  // Đảo ngược giá trị isPublic
+  const newIsPublic = !exercise.isPublic
+
+  // Cập nhật giá trị mới và trả về kết quả đã cập nhật
+  const updatedExercise = await exerciseModel.findByIdAndUpdate(
+    exerciseId,
+    { isPublic: newIsPublic },
+    { new: true, select: 'isPublic' }
+  )
+
+  return updatedExercise.isPublic
 }
 
 const getDictation = async (dictationId) => {
@@ -638,6 +661,24 @@ const toggleDislikeExercise = async (exerciseId, user) => {
     exercise.dislikedUsers.splice(userIndex, 1)
   }
 
+  // Gửi thông báo đến admin có người report video
+  if (exercise.dislikedUsers.length > 0) {
+    const adminUser = await userModel.findOne({ role: 'admin' })
+
+    if (adminUser) {
+      // Check if a notification already exists for this exerciseId (relatedId)
+      const existingNotify = await notifyModel.findOne({
+        relatedId: exerciseId,
+        userId: adminUser.id
+      })
+
+      // If no notification exists, create a new one
+      if (!existingNotify) {
+        await notifyService.createNotifyExercise(adminUser.id, exercise)
+      }
+    }
+  }
+
   // Lưu lại exercise sau khi cập nhật
   await exercise.save()
 
@@ -699,6 +740,7 @@ const exerciseService = {
   checkVideo,
   createExercise,
   getCategories,
-  updateDictation
+  updateDictation,
+  toggleLockExercise
 }
 export default exerciseService

@@ -33,7 +33,7 @@ const createNewDay = async (userId) => {
       await notifyModel.create({
         userId,
         message: `Hôm nay bạn có ${expiredCount} từ vựng cần ôn tập!`,
-        type: 'Info'
+        type: 'Word'
       })
     }
   }

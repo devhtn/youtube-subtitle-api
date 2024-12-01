@@ -73,6 +73,13 @@ exerciseRoute
     exerciseController.toggleDislikeExercise
   )
 exerciseRoute
+  .route('/toggle-lock')
+  .patch(
+    passport.authenticate('passport-jwt', { session: false }),
+    authorize(['admin']),
+    exerciseController.toggleLockExercise
+  )
+exerciseRoute
   .route('/dictation')
   .post(
     passport.authenticate('passport-jwt', { session: false }),

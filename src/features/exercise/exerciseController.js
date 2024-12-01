@@ -76,14 +76,14 @@ const getExerciseComments = async (req, res) => {
 const toggleLikeExercise = async (req, res) => {
   const user = req.user
   const { exerciseId } = req.body
-  const response = await exerciseService.toggleDislikeExercise(exerciseId, user)
+  const response = await exerciseService.toggleLikeExercise(exerciseId, user)
   return res.status(201).json(response)
 }
 
 const toggleDislikeExercise = async (req, res) => {
   const user = req.user
   const { exerciseId } = req.body
-  const response = await exerciseService.toggleLikeExercise(exerciseId, user)
+  const response = await exerciseService.toggleDislikeExercise(exerciseId, user)
   return res.status(201).json(response)
 }
 
@@ -111,7 +111,14 @@ const getExerciseStatistic = async (req, res) => {
   const response = await exerciseService.getExerciseStatistic()
   return res.status(201).json(response)
 }
+const toggleLockExercise = async (req, res) => {
+  const { exerciseId } = req.body
+  const response = await exerciseService.toggleLockExercise(exerciseId)
+  return res.status(201).json(response)
+}
+
 const exerciseController = {
+  toggleLockExercise,
   toggleDislikeExercise,
   getExerciseStatistic,
   delDictation,

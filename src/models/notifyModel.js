@@ -15,7 +15,7 @@ const notifySchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['Comment', 'Info'],
+      enum: ['Comment', 'Word', 'Exercise'],
       required: true
     },
     relatedId: {
