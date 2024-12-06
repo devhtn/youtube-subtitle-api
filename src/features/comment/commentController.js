@@ -2,12 +2,13 @@ import commentService from './commentService'
 
 const createComment = async (req, res) => {
   const user = req.user
-  const { content, parentId, exerciseId } = req.body
+  const { content, parentId, exerciseId, notifyAdmin } = req.body
   const response = await commentService.createComment(
     exerciseId,
     user,
     content,
-    parentId
+    parentId,
+    notifyAdmin
   )
   return res.status(201).json(response)
 }

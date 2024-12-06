@@ -7,21 +7,21 @@ import ytdl from 'ytdl-core'
 
 import MyError from '~/utils/MyError'
 
+import oxfordData from './oxfordData.json'
+
 const tagTranslations = {
   // Danh từ
   Noun: 'Danh từ',
-  Singular: 'Danh từ số ít',
-  Plural: 'Danh từ số nhiều',
+  Singular: 'Số ít',
+  Plural: 'Số nhiều',
 
   // Động từ
   Verb: 'Động từ',
-  Infinitive: 'Động từ nguyên mẫu',
+  Infinitive: 'Nguyên mẫu',
   PresentTense: 'Thì hiện tại',
   PastTense: 'Thì quá khứ',
-  Gerund: 'Danh động từ (V-ing)',
+  Gerund: 'Danh động từ V-ing',
   Participle: 'Phân từ (V-ed/V-ing)',
-  Modal: 'Động từ khuyết thiếu',
-  Auxiliary: 'Trợ động từ',
 
   // Tính từ
   Adjective: 'Tính từ',
@@ -30,28 +30,8 @@ const tagTranslations = {
 
   // Trạng từ
   Adverb: 'Trạng từ',
-
-  // Đại từ
-  Pronoun: 'Đại từ',
-  Possessive: 'Sở hữu từ',
-
-  // Giới từ, Liên từ, Từ hạn định
-  Preposition: 'Giới từ',
-  Conjunction: 'Liên từ',
-  Determiner: 'Từ hạn định',
-
-  // Khác
-  Article: 'Mạo từ (a, an, the)',
-  Interjection: 'Thán từ',
-  Number: 'Số từ',
-  Ordinal: 'Số thứ tự',
-  Cardinal: 'Số đếm',
-  QuestionWord: 'Từ để hỏi',
-  Negation: 'Từ phủ định',
-  Contraction: 'Từ rút gọn',
-  Value: 'Chỉ số lượng',
-  Expression: 'Từ nhấn mạnh',
-  Undefined: 'Không xác định'
+  NumericValue: 'Số đếm',
+  TextValue: 'Số từ'
 }
 const validTags = Object.keys(tagTranslations)
 
@@ -70,39 +50,6 @@ const handleRangeFilter = (filter, key) => {
     delete filter[key]
     filter.$or = [...(filter.$or || []), ...conditions]
   }
-}
-
-const addTransText = async (videoInfo) => {
-  const { segments } = videoInfo
-  // Kiểm tra tính hợp lệ của segments
-  if (!segments || segments.length === 0) {
-    throw new Error('Segments must contain at least one segment.')
-  }
-  const textsToTranslate = videoInfo.segments
-    .map((segment) => segment.text.replace(/\|/g, '<SEP>'))
-    .join('\n')
-  // const agent = new HttpProxyAgent('http://89.213.0.29:80')
-  const translated = await translate(textsToTranslate, {
-    to: 'vi'
-    // fetchOptions: { agent }
-  })
-  // Chia lại các đoạn dịch bằng cách sử dụng cùng một dấu phân cách
-  const translatedTexts = translated.text.split('\n')
-  // Kiểm tra nếu không có kết quả dịch
-  if (!translated || !translated.text) {
-    throw new MyError('Translation failed. No text was returned.')
-  }
-
-  // Kiểm tra số lượng đoạn dịch có khớp với số lượng segment không
-  if (translatedTexts.length !== videoInfo.segments.length) {
-    throw new MyError(
-      'Mismatch between number of segments and translated texts.'
-    )
-  }
-  translatedTexts.forEach((transText, index) => {
-    videoInfo.segments[index].transText = transText.trim() // Trimming để loại bỏ khoảng trắng không cần thiết
-  })
-  return videoInfo
 }
 
 function isValidYouTubeVideoId(videoId) {
@@ -147,6 +94,30 @@ function getVideoId(url) {
 
   // Nếu không khớp, trả về null
   return null
+}
+
+const addTransText = async (videoInfo) => {
+  const translated = await translate(videoInfo.textsToTranslate, {
+    to: 'vi'
+  })
+  // Chia lại các đoạn dịch bằng cách sử dụng cùng một dấu phân cách
+  const translatedTexts = translated.text.split('\n')
+  // Kiểm tra nếu không có kết quả dịch
+  if (!translated || !translated.text) {
+    throw new MyError('Translation failed')
+  }
+
+  // Kiểm tra số lượng đoạn dịch có khớp với số lượng segment không
+  if (translatedTexts.length !== videoInfo.segments.length) {
+    throw new MyError(
+      'Mismatch between number of segments and translated texts.'
+    )
+  }
+  translatedTexts.forEach((transText, index) => {
+    videoInfo.segments[index].transText = transText.trim() // Trimming để loại bỏ khoảng trắng không cần thiết
+  })
+  delete videoInfo.textsToTranslate
+  return videoInfo
 }
 
 const getInfoVideo = async (videoId, level) => {
@@ -195,24 +166,47 @@ const getInfoVideo = async (videoId, level) => {
           reject('Error parsing XML: ' + err)
         } else {
           const subtitles = result.transcript.text
+
           const segments = []
+          let textsToTranslate = ''
+          // Khởi tạo các Set để lưu trữ từ duy nhất và các biến đếm
+          let lemmaWordsSet = new Set()
+          let totalDictationWords = 0
+          let totalTime = 0
+          let totalWords = 0
           for (let i = 0; i < subtitles.length; i++) {
             const text = subtitles[i]._.replace(/\n/g, ' ')
-              .replace(/\s?\(.*?\)/g, '')
-              .replace(/\s?\[.*?\]/g, '')
+              .replace(/[([*].*?[)\]*]/g, '')
               .replace(/&#39;/g, "'")
               .replace(/&quot;/g, '"')
               .replace(/&lt;br&gt;/g, '')
-              .trim()
+              .replace(/\s+/g, ' ') // Thay thế các khoảng trắng đặc biệt
+              .replace(/’/g, "'") // Đổi tất cả dấu nháy móc thành nháy thẳng
+              .replace(/([^\s])([!?])/g, '$1 $2') // Thêm khoảng trắng trước dấu ! hoặc ?
+              .trim() // Loại bỏ khoảng trắng ở đầu và cuối
             if (!text) continue
-
+            textsToTranslate += text + (i < subtitles.length - 1 ? '\n' : '')
             const start = subtitles[i].$.start
             const dur = subtitles[i].$.dur
             const end = (parseFloat(start) + parseFloat(dur)).toFixed(3)
+
+            const { lemmatizedWords, dictationWords, tags } =
+              exerciseUtil.parseSub(text)
+            lemmatizedWords.forEach((word) => lemmaWordsSet.add(word))
+            totalDictationWords += dictationWords.length
+            // Tính thời gian và số từ
+            if (dur > 0) {
+              totalTime += parseFloat(dur)
+              totalWords += tags.length
+            }
+
             segments.push({
               start,
               end,
-              text
+              text,
+              lemmatizedWords,
+              dictationWords,
+              tags
             })
           }
           // Kiểm tra nếu segments rỗng
@@ -220,6 +214,17 @@ const getInfoVideo = async (videoId, level) => {
             reject(new MyError('Phụ đề của video không hợp lệ!'))
           } else {
             videoInfo.segments = segments
+            videoInfo.textsToTranslate = textsToTranslate
+            videoInfo.avgSpeed =
+              totalTime > 0 ? ((totalWords * 60) / totalTime).toFixed(0) : 0
+            videoInfo.totalDictationWords = totalDictationWords
+            videoInfo.lemmaWords = Array.from(lemmaWordsSet)
+
+            // Tạo danh sách đối chiếu từ vựng với `wordLists`
+            videoInfo.difficult =
+              lemmaWordsSet.size -
+              exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordData.words)
+
             resolve(videoInfo) // Trả về JSON
           }
         }
@@ -233,12 +238,7 @@ const getInfoVideo = async (videoId, level) => {
 const parseSub = (text) => {
   // youtube subtitle đã có sẵn một số quy tắt để đảm bảo phụ đề chuẩn, chỉ cần chỉnh sửa
   // loại bỏ phần văn bản bắt đầu bằng ( hoặc [ và kế thúc ) hoặc ]
-  const cleanedText = text
-    .replace(/[[(].*?[\])]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  const textTags = nlp(cleanedText).out('tags')
+  const textTags = nlp(text).out('tags')
 
   let mergedTextTags = textTags.reduce((acc, obj) => {
     Object.keys(obj).forEach((key) => {
@@ -255,44 +255,46 @@ const parseSub = (text) => {
     )
   })
 
-  const allArrayWords = cleanedText.split(' ')
+  const allArrayWords = text.split(' ')
   // xử lý lấy từ vựng cần chép chính tả
   const dictationWords = new Set()
   const newCleanTags = []
+  const cleanLemmaTags = []
   allArrayWords.forEach((word) => {
-    // Loại bỏ dấu ' đầu và cuối, đồng thời những kí tự đặc biệt
-    const cleanWord = word
-      .replace(/^[^a-zA-Z0-9]+/, '')
-      .replace(/[^a-zA-Z0-9]+$/, '')
-
-    const isContraction = /[']/.test(cleanWord)
+    // Loại bỏ toàn bộ kí tự đặc biệt chỉ giữ lại chữ và số
+    const cleanWord = word.replace(/[^a-zA-Z0-9]/g, '')
     // Tìm kiếm trong sentenceTags
     const found = cleanTags.find((el) => el[0] === cleanWord.toLowerCase())
 
     let validTranslatedTags = []
     if (found) {
       //xử lý các tag gợi ý
-      if (!found[1].includes('ProperNoun')) {
+      if (
+        !(
+          (found[1].includes('ProperNoun') && /^[A-Z]/.test(cleanWord)) ||
+          found[1].includes('Possessive') ||
+          found[1].includes('Copula')
+        )
+      ) {
         validTranslatedTags = found[1].filter((tag) => validTags.includes(tag))
-        if (validTranslatedTags.length > 0) dictationWords.add(cleanWord)
+        if (validTranslatedTags.length > 0) {
+          dictationWords.add(cleanWord)
+          cleanLemmaTags.push(found)
+        }
       }
     }
     // Trường hợp không tìm thấy, tức là từ viết tắt đã bị tách ra làm 2 thành phần
-    else if (isContraction) {
-      dictationWords.add(cleanWord)
-      validTranslatedTags.push('Contraction')
-    } else validTranslatedTags.push('Undefined')
+    else {
+      validTranslatedTags.push('')
+    }
 
     const textTags =
-      validTranslatedTags.map((tag) => tagTranslations[tag]).join(' - ') ||
-      'Không xác định' // Ghép tag thành chuỗi
-    if (!textTags)
-      cleanTags = cleanTags.filter((el) => el[0] !== cleanWord.toLowerCase())
+      validTranslatedTags.map((tag) => tagTranslations[tag]).join(' - ') || null // Ghép tag thành chuỗi
     newCleanTags.push(textTags)
   })
 
   const lemmatizedWords = []
-  cleanTags.forEach((tagWord) => {
+  cleanLemmaTags.forEach((tagWord) => {
     const word = tagWord[0]
     const tags = tagWord[1] // tags là array chứa nhiều loại từ
     let lemma

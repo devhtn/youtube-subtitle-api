@@ -32,6 +32,20 @@ const userSchema = new Schema(
     },
     picture: {
       type: String
+    },
+    lock: {
+      isLock: {
+        type: Boolean,
+        default: false
+      },
+      dateOpen: {
+        type: Date,
+        default: null
+      },
+      reason: {
+        type: String,
+        default: ''
+      }
     }
   },
   modelConfig

@@ -50,9 +50,10 @@ const exerciseSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'User'
     },
-    isPublic: {
-      type: Boolean,
-      default: false
+    state: {
+      type: String,
+      enum: ['private', 'public', 'hidden'],
+      default: 'private'
     },
     title: {
       type: String,

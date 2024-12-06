@@ -277,7 +277,67 @@ const getRankingUsers = async (userId) => {
   }
 }
 
+const lockUser = async (userId, lockDuration, reason) => {
+  if (!lockDuration || !reason) {
+    throw new MyError(
+      'Vui lòng cung cấp thời gian khóa và lý do khóa tài khoản.'
+    )
+  }
+
+  // Tìm user theo userId
+  const user = await userModel.findById(userId)
+  if (!user) {
+    throw new MyError('Không tìm thấy người dùng.')
+  }
+
+  // Kiểm tra nếu tài khoản đã bị khóa
+  if (user.lock?.isLock) {
+    throw new MyError('Tài khoản đã bị khóa.')
+  }
+
+  // Tính toán thời gian mở khóa
+  const lockDurationInMilliseconds = lockDuration * 24 * 60 * 60 * 1000 // Chuyển đổi số ngày thành milliseconds
+  const dateOpen = new Date(Date.now() + lockDurationInMilliseconds) // Thời gian mở khóa
+
+  // Cập nhật trạng thái khóa tài khoản
+  user.lock = {
+    isLock: true,
+    dateOpen,
+    reason
+  }
+
+  // Lưu thay đổi
+  const updateUser = await user.save()
+  return updateUser
+}
+
+const unlockUser = async (userId) => {
+  // Tìm user theo userId
+  const user = await userModel.findById(userId)
+  if (!user) {
+    throw new MyError('Không tìm thấy người dùng.')
+  }
+
+  // Kiểm tra nếu tài khoản chưa bị khóa
+  if (!user.lock?.isLock) {
+    throw new MyError('Tài khoản chưa bị khóa.')
+  }
+
+  // Mở khóa tài khoản ngay lập tức
+  user.lock = {
+    isLock: false,
+    dateOpen: null, // Xóa thời gian mở khóa
+    reason: '' // Xóa lý do khóa
+  }
+
+  // Lưu thay đổi
+  const updateUser = await user.save()
+  return updateUser
+}
+
 const authService = {
+  unlockUser,
+  lockUser,
   updateInfo,
   getRankingUsers,
   getUserStatistic,

@@ -7,11 +7,11 @@ const getExerciseComments = async (exerciseId) => {
   return await commentModel
     .find({ exerciseId, parentId: null })
     .sort({ createdAt: -1 })
-    .populate('userId', 'name picture') // Populate để lấy thông tin người dùng cho comment gốc
+    .populate('userId', 'name picture role') // Populate để lấy thông tin người dùng cho comment gốc
     .populate({
       path: 'replies',
       populate: [
-        { path: 'userId', select: 'name picture' }, // Populate thông tin người dùng trong replies
+        { path: 'userId', select: 'name picture role' }, // Populate thông tin người dùng trong replies
         { path: 'mentionUserId', select: 'name' } // Populate thông tin người dùng cho mentionUserId
       ]
     })
@@ -38,11 +38,11 @@ const toggleLikeComment = async (commentId, userId) => {
   // Lấy lại comment đã cập nhật và populate các dữ liệu cần thiết
   const updatedComment = await commentModel
     .findById(commentId)
-    .populate('userId', 'name picture')
+    .populate('userId', 'name picture role')
     .populate({
       path: 'replies',
       populate: [
-        { path: 'userId', select: 'name picture' },
+        { path: 'userId', select: 'name picture role' },
         { path: 'mentionUserId', select: 'name' }
       ]
     })
@@ -51,7 +51,13 @@ const toggleLikeComment = async (commentId, userId) => {
   return updatedComment
 }
 
-const createComment = async (exerciseId, user, content, parentId) => {
+const createComment = async (
+  exerciseId,
+  user,
+  content,
+  parentId,
+  notifyAdmin = false
+) => {
   let mentionUserId = null
   let newParentId = parentId
 
@@ -112,6 +118,15 @@ const createComment = async (exerciseId, user, content, parentId) => {
         savedComment
       )
     }
+  } else if (notifyAdmin) {
+    const senderUser = user
+    const admin = await userModel.findOne({ role: 'admin' })
+    await notifyService.notifyComment(
+      admin.id,
+      senderUser.name,
+      savedComment,
+      notifyAdmin
+    )
   }
 
   return savedComment

@@ -34,5 +34,17 @@ authRoute
     upload.single('picture'),
     authController.updateInfo
   )
+authRoute
+  .route('/lock')
+  .patch(
+    passport.authenticate('passport-jwt', { session: false }),
+    authController.lockUser
+  )
+authRoute
+  .route('/unlock')
+  .patch(
+    passport.authenticate('passport-jwt', { session: false }),
+    authController.unlockUser
+  )
 
 export default authRoute

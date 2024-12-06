@@ -43,7 +43,20 @@ const updateInfo = async (req, res) => {
   return res.status(201).json(response)
 }
 
+const lockUser = async (req, res) => {
+  const { userId, lockDuration, reason } = req.body
+  const response = await authService.lockUser(userId, lockDuration, reason)
+  return res.status(201).json(response)
+}
+const unlockUser = async (req, res) => {
+  const { userId } = req.body
+  const response = await authService.unlockUser(userId)
+  return res.status(201).json(response)
+}
+
 const authController = {
+  unlockUser,
+  lockUser,
   updateInfo,
   getRankingUsers,
   getUserStatistic,

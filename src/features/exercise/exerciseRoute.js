@@ -55,12 +55,6 @@ exerciseRoute
     exerciseController.getUserDictations
   )
 exerciseRoute
-  .route('/:exerciseId/comments')
-  .get(
-    passport.authenticate('passport-jwt', { session: false }),
-    exerciseController.getExerciseComments
-  )
-exerciseRoute
   .route('/toggle-like')
   .post(
     passport.authenticate('passport-jwt', { session: false }),

@@ -7,11 +7,18 @@ import { sendMessageToUser } from '~/socket'
 
 // Import userSocketMap từ file socket
 
-const notifyComment = async (recipientUserId, senderUser, newComment) => {
+const notifyComment = async (
+  recipientUserId,
+  senderUser,
+  newComment,
+  notifyAdmin = false
+) => {
   // Tạo thông báo mới trong cơ sở dữ liệu
   const newNotify = await notifyModel.create({
     userId: recipientUserId,
-    message: `${senderUser} đã trả lời bình luận của bạn`,
+    message: notifyAdmin
+      ? `${senderUser} đã nhắc đến bạn trong một bình luận`
+      : `${senderUser} đã trả lời bình luận của bạn`,
     type: 'Comment',
     relatedId: newComment._id
   })
@@ -25,7 +32,7 @@ const notifyComment = async (recipientUserId, senderUser, newComment) => {
 const createNotifyExercise = async (recipientUserId, exercise) => {
   const newNotify = await notifyModel.create({
     userId: recipientUserId,
-    message: `Video này đang bị cộng đồng report`,
+    message: `Có một video đang bị cộng đồng report`,
     type: 'Exercise',
     relatedId: exercise.id
   })

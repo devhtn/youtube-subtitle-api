@@ -52,8 +52,8 @@ const updateDictationSegment = async (req, res) => {
 
 const getExercises = async (req, res) => {
   const query = req.query
-  const userId = req.user.id
-  const response = await exerciseService.getExercises(query, userId)
+  const user = req.user
+  const response = await exerciseService.getExercises(query, user)
   return res.status(201).json(response)
 }
 const getCategories = async (req, res) => {
@@ -64,12 +64,6 @@ const getCategories = async (req, res) => {
 const getExercise = async (req, res) => {
   const { id } = req.params
   const response = await exerciseService.getExercise(id)
-  return res.status(201).json(response)
-}
-
-const getExerciseComments = async (req, res) => {
-  const { exerciseId } = req.params
-  const response = await exerciseService.getExerciseComments(exerciseId)
   return res.status(201).json(response)
 }
 
@@ -125,7 +119,6 @@ const exerciseController = {
   createDictation,
   getUserDictations,
   toggleLikeExercise,
-  getExerciseComments,
   getExercise,
   getExercises,
   updateDictationSegment,

@@ -1,13 +1,13 @@
 import fs from 'fs'
 
 import _ from 'lodash'
+import mongoose from 'mongoose'
 
 import MyError from '~/utils/MyError'
 
 import notifyService from '../notify/notifyService'
 import wordService from '../word/wordService'
 import exerciseUtil from './exerciseUtil'
-import oxfordData from './oxfordData.json'
 import commentModel from '~/models/commentModel'
 import dictationModel from '~/models/dictationModel'
 import exerciseModel from '~/models/exerciseModel'
@@ -16,7 +16,7 @@ import userModel from '~/models/userModel'
 import { filterQuery } from '~/utils'
 
 const checkVideo = async (videoId, user) => {
-  const TIMEOUT_DURATION = 10000 // 10 giây
+  const TIMEOUT_DURATION = 100000 // 10 giây
 
   // Hàm timeout để thông báo người dùng nếu quá thời gian
   const timeoutPromise = new Promise((_, reject) => {
@@ -42,47 +42,6 @@ const checkVideo = async (videoId, user) => {
       videoInfo = await exerciseUtil.getInfoVideo(videoId, level)
     }
 
-    // Khởi tạo các Set để lưu trữ từ duy nhất và các biến đếm
-    let lemmaWordsSet = new Set()
-    let totalDictationWords = 0
-    let totalTime = 0
-    let totalWords = 0
-
-    // Duyệt qua các segment để xử lý từng phần của video
-    videoInfo.segments.forEach((segment) => {
-      segment.text = segment.text
-        .replace(/\s+/g, ' ') // Thay thế các khoảng trắng đặc biệt
-        .trim() // Loại bỏ khoảng trắng ở đầu và cuối
-        .replace(/’/g, "'") // Đổi tất cả dấu nháy móc thành nháy thẳng
-        .replace(/\s*'\s*/g, "'") // Loại bỏ khoảng trắng ở trước và sau dấu '
-        .replace(/\s{2,}/g, ' ') // Thay thế tất cả những chỗ có 2 khoảng trắng trở lên bằng 1 khoảng trắng
-      const { lemmatizedWords, dictationWords, tags } = exerciseUtil.parseSub(
-        segment.text
-      )
-      segment.dictationWords = dictationWords
-      segment.lemmaSegmentWords = lemmatizedWords
-      segment.tags = tags
-      // Thêm các từ vào Set để loại bỏ phần tử trùng lặp
-      lemmatizedWords.forEach((word) => lemmaWordsSet.add(word))
-      totalDictationWords += dictationWords.length
-      // Tính thời gian và số từ
-      const duration = segment.end - segment.start
-      if (duration > 0) {
-        totalTime += duration
-        totalWords += tags.length
-      }
-    })
-
-    // Tính tốc độ trung bình và số lượng từ duy nhất trong dictationWords
-    videoInfo.avgSpeed =
-      totalTime > 0 ? ((totalWords * 60) / totalTime).toFixed(0) : 0
-    videoInfo.totalDictationWords = totalDictationWords
-    videoInfo.lemmaWords = Array.from(lemmaWordsSet)
-
-    // Tạo danh sách đối chiếu từ vựng với `wordLists`
-    videoInfo.difficult =
-      lemmaWordsSet.size -
-      exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordData.words)
     const newVideoInfo = await exerciseUtil.addTransText(videoInfo)
 
     return newVideoInfo
@@ -102,9 +61,8 @@ const delDictation = async (dictationId) => {
   await dictationModel.findByIdAndDelete(dictationId)
 
   const exercise = await exerciseModel.findById(dictation.exerciseId)
-  if (exercise && !exercise.isPublic) {
+  if (exercise && exercise.state === 'private') {
     await exerciseModel.findByIdAndDelete(exercise._id)
-    await commentModel.deleteMany({ exerciseId: exercise._id })
   }
 
   return dictation
@@ -180,7 +138,7 @@ const createPublicExercise = async (videoInfo, userId) => {
 
   const exercise = await exerciseModel.create({
     ...videoInfo,
-    isPublic: true,
+    state: 'public',
     userId
   })
   return exercise
@@ -260,17 +218,16 @@ const toggleLockExercise = async (exerciseId) => {
     throw new Error('Exercise not found')
   }
 
-  // Đảo ngược giá trị isPublic
-  const newIsPublic = !exercise.isPublic
+  const newState = exercise.state === 'public' ? 'hidden' : 'public'
 
   // Cập nhật giá trị mới và trả về kết quả đã cập nhật
   const updatedExercise = await exerciseModel.findByIdAndUpdate(
     exerciseId,
-    { isPublic: newIsPublic },
-    { new: true, select: 'isPublic' }
+    { state: newState },
+    { new: true, select: 'state' }
   )
 
-  return updatedExercise.isPublic
+  return updatedExercise.state
 }
 
 const getDictation = async (dictationId) => {
@@ -431,7 +388,7 @@ const updateDictationSegment = async (
 
       // Nếu danh sách completedUsers trống, thêm userId vào firstUserId
       if (exercise.completedUsers.length === 0) {
-        updateFields.$set = { isPublic: true, firstUserId: userId }
+        updateFields.$set = { state: 'public', firstUserId: userId }
       }
 
       await exerciseModel.findByIdAndUpdate(
@@ -473,7 +430,7 @@ const getUserDictations = async (userId, query = {}) => {
   return dictations
 }
 
-const getExercises = async (query, userId) => {
+const getExercises = async (query, user) => {
   let filter = filterQuery(query)
 
   // FILTER
@@ -481,12 +438,16 @@ const getExercises = async (query, userId) => {
   if (Array.isArray(filter.category)) {
     filter.category = { $in: filter.category }
   }
+
   // handle duration
   exerciseUtil.handleRangeFilter(filter, 'duration')
+
   // handle difficult
   exerciseUtil.handleRangeFilter(filter, 'difficult')
+
   // handle interaction
   if (filter.interaction) {
+    const userId = new mongoose.Types.ObjectId(user.id)
     if (typeof filter.interaction === 'string') {
       filter.interaction = [filter.interaction]
     }
@@ -497,8 +458,61 @@ const getExercises = async (query, userId) => {
     filter.$or = [...(filter.$or || []), ...conditions]
   }
 
+  // handle state
+  // Handle state
+  let defaultState = []
+  if (user.role === 'user') {
+    defaultState = ['public']
+  } else {
+    defaultState = ['public', 'hidden']
+  }
+
+  // Xử lý filter.state
+  if (filter.state) {
+    // Nếu filter.state là một chuỗi, chuyển thành mảng
+    if (typeof filter.state === 'string') {
+      filter.state = [filter.state] // Đảm bảo filter.state là mảng
+    }
+    // Áp dụng điều kiện $in
+    filter.state = { $in: filter.state }
+  } else {
+    // Nếu không có filter.state, sử dụng defaultState
+    filter.state = { $in: defaultState }
+  }
+
+  // handle creator
+  if (filter.creator) {
+    const roleCondition = { 'userId.role': filter.creator }
+    delete filter.creator
+    filter.$or = [...(filter.$or || []), roleCondition]
+  }
+
+  // SEARCH
+  // Search Text
+  const searchText = query.q?.trim() // Text tìm kiếm người dùng nhập
+  const escapedSearchText = _.escapeRegExp(searchText)
+  delete filter.q
+
+  // Tìm kiếm theo title, category hoặc firstUser.name
+  // Tạo điều kiện tìm kiếm cho title và category nếu có searchText
+  let searchConditions = []
+  if (searchText) {
+    searchConditions = [
+      { title: { $regex: escapedSearchText, $options: 'i' } }, // Tìm kiếm trong title
+      { category: { $regex: escapedSearchText, $options: 'i' } }, // Tìm kiếm trong category
+      { 'firstUserId.name': { $regex: escapedSearchText, $options: 'i' } } // Tìm kiếm theo name của firstUserId
+    ]
+  }
+  // Bây giờ, chúng ta tạo điều kiện $and kết hợp cả tìm kiếm theo searchText và các filter còn lại
+  const combinedFilter = {
+    $and: [
+      ...(searchConditions.length > 0 ? [{ $or: searchConditions }] : []), // Nếu có searchText, tìm kiếm theo title hoặc category
+      { ...filter } // Kết hợp với filter còn lại (duration, interaction, ...etc)
+    ]
+  }
+
   const page = parseInt(query.page, 10) || 1
-  const limit = parseInt(query.limit, 10) || 8
+  const limit = parseInt(query.limit, 10) || 12
   const skip = (page - 1) * limit
 
   // Đặt giá trị mặc định cho sort và order nếu không có trong query
@@ -506,20 +520,91 @@ const getExercises = async (query, userId) => {
   const sortOrder = query.order === 'asc' ? 1 : -1 // Nếu order là 'asc', sắp xếp tăng dần, ngược lại sắp xếp giảm dần
 
   // Lấy tổng danh sách
-  const totalExercises = await exerciseModel.countDocuments({
-    isPublic: true,
-    ...filter
-  })
+
+  const totalExercisesResult = await exerciseModel.aggregate([
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'firstUserId',
+        foreignField: '_id',
+        as: 'firstUserId'
+      }
+    },
+    {
+      $unwind: {
+        path: '$firstUserId',
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'userId',
+        foreignField: '_id',
+        as: 'userId'
+      }
+    },
+    {
+      $unwind: {
+        path: '$userId',
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    { $match: combinedFilter },
+    { $count: 'totalCount' }
+  ])
+
+  const totalExercises =
+    totalExercisesResult.length > 0 ? totalExercisesResult[0].totalCount : 0
   const totalPages = Math.ceil(totalExercises / limit)
 
   // Sử dụng aggregate để lấy danh sách exercises với số lượng người dùng đã hoàn thành
   const exercises = await exerciseModel.aggregate([
+    //
     {
-      $match: { isPublic: true, ...filter } // Chỉ lấy bài tập công khai
+      $lookup: {
+        from: 'users',
+        localField: 'firstUserId',
+        foreignField: '_id',
+        as: 'firstUserId'
+      }
+    },
+    {
+      $unwind: {
+        path: '$firstUserId',
+        preserveNullAndEmptyArrays: true // Giữ lại bài tập nếu không tìm thấy người dùng
+      }
     },
     {
       $addFields: {
-        completedUsersCount: { $size: '$completedUsers' }, // Đếm số lượng người dùng đã hoàn thành
+        firstUserName: { $ifNull: ['$firstUserId.name', ''] } // Nếu firstUserId.name không tồn tại, trả về chuỗi rỗng
+      }
+    },
+    // Lookup the userId and add role to filter by it
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'userId', // Assuming 'userId' is the reference field for the user
+        foreignField: '_id',
+        as: 'userId'
+      }
+    },
+    {
+      $unwind: {
+        path: '$userId',
+        preserveNullAndEmptyArrays: true // Preserve if userId not found
+      }
+    },
+
+    //
+    {
+      $match: combinedFilter // Áp dụng bộ lọc và điều kiện tìm kiếm sau khi lookup
+    },
+    {
+      $addFields: {
+        completedUsersCount: { $size: '$completedUsers' },
+        likedUsersCount: { $size: '$likedUsers' },
+        dislikedUsersCount: { $size: '$dislikedUsers' },
         id: '$_id'
       }
     },
@@ -538,27 +623,11 @@ const getExercises = async (query, userId) => {
       }
     },
     {
-      $lookup: {
-        from: 'users',
-        localField: 'firstUserId',
-        foreignField: '_id',
-        as: 'firstUserId'
-      }
-    },
-    {
-      $unwind: {
-        path: '$firstUserId',
-        preserveNullAndEmptyArrays: true // Giữ lại bài tập nếu không tìm thấy người dùng
-      }
-    },
-    {
       $addFields: {
         'firstUserId.id': '$firstUserId._id' // Thêm trường id cho firstUserId
       }
     }
   ])
-
-  // Nhóm các bài tập theo category và đếm số lượng bài tập cho từng category
 
   return { exercises, totalPages, totalExercises }
 }
@@ -566,7 +635,7 @@ const getExercises = async (query, userId) => {
 const getCategories = async () => {
   const categories = await exerciseModel.aggregate([
     {
-      $match: { isPublic: true } // Chỉ lấy bài tập công khai với bộ lọc
+      $match: { state: 'public' } // Chỉ lấy bài tập công khai với bộ lọc
     },
     {
       $group: { _id: '$category' } // Nhóm theo category
@@ -591,21 +660,6 @@ const getExercise = async (id) => {
 }
 
 // comment exercise
-
-const getExerciseComments = async (exerciseId) => {
-  return await commentModel
-    .find({ exerciseId, parentId: null })
-    .sort({ createdAt: -1 })
-    .populate('userId', 'name picture') // Populate để lấy thông tin người dùng cho comment gốc
-    .populate({
-      path: 'replies',
-      populate: [
-        { path: 'userId', select: 'name picture' }, // Populate thông tin người dùng trong replies
-        { path: 'mentionUserId', select: 'name' } // Populate thông tin người dùng cho mentionUserId
-      ]
-    })
-    .exec()
-}
 
 const toggleLikeExercise = async (exerciseId, user) => {
   // Tìm bài tập và kiểm tra tồn tại
@@ -686,6 +740,7 @@ const toggleDislikeExercise = async (exerciseId, user) => {
 }
 
 const getExerciseStatistic = async () => {
+  // 1. Tính toán thống kê theo tháng và lấy thông tin role
   const result = await exerciseModel.aggregate([
     // Thêm trường "monthYear" từ "createdAt"
     {
@@ -693,11 +748,34 @@ const getExerciseStatistic = async () => {
         monthYear: { $dateToString: { format: '%m-%Y', date: '$createdAt' } }
       }
     },
-    // Nhóm theo "monthYear" để đếm số bài tập theo tháng
+    // Lookup để lấy thông tin role của người tạo bài tập từ User collection
+    {
+      $lookup: {
+        from: 'users', // Collection chứa thông tin user
+        localField: 'userId', // userId từ exerciseModel
+        foreignField: '_id', // _id trong users
+        as: 'userInfo' // Kết quả lookup sẽ được lưu vào "userInfo"
+      }
+    },
+    // Giải nén mảng userInfo (mỗi bài tập chỉ có 1 người tạo)
+    {
+      $unwind: '$userInfo'
+    },
+    // Nhóm theo "monthYear" và phân loại theo role
     {
       $group: {
         _id: '$monthYear',
-        countExercise: { $sum: 1 }
+        countExercise: { $sum: 1 },
+        countAdminExercise: {
+          $sum: { $cond: [{ $eq: ['$userInfo.role', 'admin'] }, 1, 0] }
+        },
+        countUserExercise: {
+          $sum: { $cond: [{ $eq: ['$userInfo.role', 'user'] }, 1, 0] }
+        },
+        countCompletedExercises: {
+          $sum: { $cond: [{ $gt: [{ $size: '$completedUsers' }, 0] }, 1, 0] }
+        },
+        totalCompletionCount: { $sum: { $size: '$completedUsers' } }
       }
     },
     // Định dạng lại kết quả
@@ -705,22 +783,52 @@ const getExerciseStatistic = async () => {
       $project: {
         _id: 0,
         month: '$_id',
-        countExercise: 1
+        countExercise: 1,
+        countAdminExercise: 1,
+        countUserExercise: 1,
+        countCompletedExercises: 1,
+        totalCompletionCount: 1
       }
     },
     // Sắp xếp theo tháng-năm
     { $sort: { month: 1 } }
   ])
 
-  // Tính tổng số lượng bài tập
+  // 2. Tính tổng số lượng bài tập từ tất cả các tháng
   const totalExercises = result.reduce(
     (total, item) => total + item.countExercise,
     0
   )
 
+  // 3. Tính tổng số bài tập do admin và user tạo
+  const totalAdminExercises = result.reduce(
+    (total, item) => total + item.countAdminExercise,
+    0
+  )
+
+  const totalUserExercises = result.reduce(
+    (total, item) => total + item.countUserExercise,
+    0
+  )
+
+  // 4. Tính tổng số bài tập đã hoàn thành và tổng số lượt hoàn thành
+  const totalCompletedExercises = result.reduce(
+    (total, item) => total + item.countCompletedExercises,
+    0
+  )
+
+  const totalCompletionCount = result.reduce(
+    (total, item) => total + item.totalCompletionCount,
+    0
+  )
+
   return {
     statistic: result, // Thống kê bài tập theo tháng
-    totalExercises // Tổng số lượng bài tập
+    totalExercises, // Tổng số lượng bài tập
+    totalAdminExercises, // Tổng bài tập do admin tạo
+    totalUserExercises, // Tổng bài tập do người dùng tạo
+    totalCompletedExercises, // Tổng số bài tập đã hoàn thành
+    totalCompletionCount // Tổng số lượt hoàn thành bài tập
   }
 }
 
@@ -732,7 +840,6 @@ const exerciseService = {
   createDictation,
   toggleLikeExercise,
   toggleDislikeExercise,
-  getExerciseComments,
   getExercise,
   getExercises,
   updateDictationSegment,

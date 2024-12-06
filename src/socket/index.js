@@ -19,7 +19,6 @@ export const setupSocket = (_io) => {
         io.emit('user-online', userId) // Thông báo user online
       }
       userSocketMap.get(userId).add(socket)
-      console.log(userSocketMap)
     })
 
     socket.on('disconnect', () => {
@@ -44,7 +43,6 @@ export const setupSocket = (_io) => {
  * @param {string} message - Nội dung tin nhắn
  */
 export const sendMessageToUser = (userId, eventName, data) => {
-  console.log(userSocketMap)
   const sockets = userSocketMap.get(userId)
   if (sockets && sockets.size > 0) {
     sockets.forEach((socket) => {

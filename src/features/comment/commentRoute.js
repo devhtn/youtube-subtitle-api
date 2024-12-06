@@ -17,5 +17,11 @@ commentRoute
     passport.authenticate('passport-jwt', { session: false }),
     commentController.toggleLikeComment
   )
+commentRoute
+  .route('/:exerciseId')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    commentController.getExerciseComments
+  )
 
 export default commentRoute
