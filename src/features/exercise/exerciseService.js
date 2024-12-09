@@ -367,7 +367,8 @@ const updateDictationSegment = async (
       // Tính điểm cho bài tập vừa hoàn thành
       let totalSegmentScore = 0
       updateDictation.segments.forEach((segment) => {
-        const segmentScore = 1 / segment.attemptsCount
+        const segmentScore =
+          segment.attemptsCount > 0 ? 1 / segment.attemptsCount : 0
         totalSegmentScore += segmentScore
       })
       const dictationScore =

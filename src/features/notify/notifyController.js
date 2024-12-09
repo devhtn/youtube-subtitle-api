@@ -12,5 +12,11 @@ const updateNotify = async (req, res) => {
   res.status(201).json(response)
 }
 
-const notifyController = { getUserNotifies, updateNotify }
+const deleteNotify = async (req, res) => {
+  const { id } = req.params
+  const response = await notifyService.deleteNotify(id)
+  res.status(201).json(response)
+}
+
+const notifyController = { getUserNotifies, updateNotify, deleteNotify }
 export default notifyController

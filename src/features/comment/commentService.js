@@ -1,11 +1,15 @@
+import MyError from '~/utils/MyError'
+
 import notifyService from '../notify/notifyService'
 import commentModel from '~/models/commentModel'
 import exerciseModel from '~/models/exerciseModel'
 import userModel from '~/models/userModel'
 
-const getExerciseComments = async (exerciseId) => {
+const getExerciseComments = async (exerciseId, query = {}) => {
+  let filter = { exerciseId, parentId: null }
+  // hanlde state
   return await commentModel
-    .find({ exerciseId, parentId: null })
+    .find(filter)
     .sort({ createdAt: -1 })
     .populate('userId', 'name picture role') // Populate để lấy thông tin người dùng cho comment gốc
     .populate({
@@ -18,10 +22,27 @@ const getExerciseComments = async (exerciseId) => {
     .exec()
 }
 
+const toggleHiddenComment = async (commentId) => {
+  // Tìm comment theo ID
+  const comment = await commentModel.findById(commentId)
+  if (!comment) {
+    throw new MyError('Comment not found') // Ném lỗi nếu không tìm thấy comment
+  }
+
+  // Toggle trạng thái
+  const newState = comment.state === 'public' ? 'hidden' : 'public'
+
+  // Cập nhật trạng thái mới
+  comment.state = newState
+  await comment.save() // Lưu lại thay đổi vào database
+
+  return comment // Trả về cả comment và exercise đã cập nhật
+}
+
 const toggleLikeComment = async (commentId, userId) => {
   // Tìm và cập nhật comment
   const comment = await commentModel.findById(commentId)
-  if (!comment) throw new Error('Comment not found')
+  if (!comment) throw new MyError('Comment not found')
 
   // Kiểm tra xem user đã like comment này chưa
   const hasLiked = comment.likes.includes(userId)
@@ -95,11 +116,11 @@ const createComment = async (
   // Tìm lại comment vừa tạo và populate dữ liệu cần thiết
   const savedComment = await commentModel
     .findById(newComment._id)
-    .populate('userId', 'name picture') // Populate thông tin người dùng cho comment gốc
+    .populate('userId', 'name picture role') // Populate thông tin người dùng cho comment gốc
     .populate({
       path: 'replies',
       populate: [
-        { path: 'userId', select: 'name picture' }, // Populate thông tin người dùng trong replies
+        { path: 'userId', select: 'name picture role' }, // Populate thông tin người dùng trong replies
         { path: 'mentionUserId', select: 'name' } // Populate thông tin người dùng cho mentionUserId
       ] // Populate thông tin người dùng trong replies
     })
@@ -133,6 +154,7 @@ const createComment = async (
 }
 
 const commentService = {
+  toggleHiddenComment,
   toggleLikeComment,
   getExerciseComments,
   createComment

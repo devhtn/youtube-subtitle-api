@@ -9,8 +9,8 @@ const register = async (req, res) => {
 }
 const login = async (req, res) => {
   const userInfo = req.body
-  const login = await authService.login(userInfo)
-  return res.status(201).json(login)
+  const response = await authService.login(userInfo)
+  return res.status(201).json(response)
 }
 
 const googleLogin = async (req, res) => {

@@ -14,7 +14,8 @@ const createComment = async (req, res) => {
 }
 const getExerciseComments = async (req, res) => {
   const { exerciseId } = req.params
-  const response = await commentService.getExerciseComments(exerciseId)
+  const query = req.query
+  const response = await commentService.getExerciseComments(exerciseId, query)
   return res.status(201).json(response)
 }
 
@@ -24,8 +25,14 @@ const toggleLikeComment = async (req, res) => {
   const response = await commentService.toggleLikeComment(commentId, userId)
   return res.status(201).json(response)
 }
+const toggleHiddenComment = async (req, res) => {
+  const { commentId } = req.params
+  const response = await commentService.toggleHiddenComment(commentId)
+  return res.status(201).json(response)
+}
 
 const commentController = {
+  toggleHiddenComment,
   toggleLikeComment,
   getExerciseComments,
   createComment

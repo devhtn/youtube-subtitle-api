@@ -15,11 +15,14 @@ passport.use(
   new JwtStrategy(opts, async (jwt_payload, done) => {
     try {
       const user = await userModel.findById(jwt_payload.id)
-      if (user) {
-        return done(null, user)
-      } else {
+      if (!user) return done(null, false)
+
+      // Nếu người dùng bị khóa thì xem như token đã hết hạn
+      if (user.lock?.isLock) {
         return done(null, false)
       }
+
+      return done(null, user)
     } catch (err) {
       return done(err, false)
     }

@@ -9,6 +9,11 @@ const commentSchema = new mongoose.Schema(
       ref: 'Exercise',
       required: true
     },
+    state: {
+      type: String,
+      enum: ['public', 'hidden'],
+      default: 'public'
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

@@ -24,15 +24,30 @@ const register = async (dataFields) => {
 
 const login = async (userInfo) => {
   const { username, password } = userInfo
-  const user = await userModel.findOne(
-    { username },
-    { createdAt: 0, updatedAt: 0 }
-  )
+  const user = await userModel.findOne({ username })
 
   if (!user) throw new MyError('Tên đăng nhập không tồn tại!', 401)
 
   const isMatch = await bcrypt.compare(password, user.password)
   if (!isMatch) throw new MyError('Sai mật khẩu', 401)
+
+  // Kiểm tra nếu tài khoản bị khóa
+  if (user.lock?.isLock) {
+    const currentDate = new Date() // Lấy thời gian hiện tại
+    const dateOpen = new Date(user.lock.dateOpen) // Chuyển đổi ngày mở khóa từ chuỗi thành Date object
+
+    // Nếu thời gian hiện tại lớn hơn dateOpen (tức là tài khoản đã hết hạn bị khóa)
+    if (currentDate > dateOpen) {
+      // Mở khóa tài khoản, cập nhật lại trạng thái lock
+      user.lock.isLock = false
+      user.lock.dateOpen = null // Cập nhật lại ngày mở khóa (không còn bị khóa)
+      user.lock.dateOpen = '' // Cập nhật lại ngày mở khóa (không còn bị khóa)
+      await user.save() // Lưu thay đổi vào cơ sở dữ liệu
+    } else {
+      // Nếu tài khoản vẫn bị khóa, trả về thông tin khóa
+      throw new MyError(user.lock, 403) // Trả về nguyên object lock
+    }
+  }
 
   const payload = { id: user._id, role: user.role }
   const token = jwt.sign(payload, env.TOKEN_SECRET, { expiresIn: '30d' })

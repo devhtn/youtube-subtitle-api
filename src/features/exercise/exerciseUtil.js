@@ -204,7 +204,7 @@ const getInfoVideo = async (videoId, level) => {
               start,
               end,
               text,
-              lemmatizedWords,
+              lemmaSegmentWords: lemmatizedWords,
               dictationWords,
               tags
             })
@@ -262,9 +262,9 @@ const parseSub = (text) => {
   const cleanLemmaTags = []
   allArrayWords.forEach((word) => {
     // Loại bỏ toàn bộ kí tự đặc biệt chỉ giữ lại chữ và số
-    const cleanWord = word.replace(/[^a-zA-Z0-9]/g, '')
+    const cleanWord = word.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
     // Tìm kiếm trong sentenceTags
-    const found = cleanTags.find((el) => el[0] === cleanWord.toLowerCase())
+    const found = cleanTags.find((el) => el[0] === cleanWord)
 
     let validTranslatedTags = []
     if (found) {
@@ -293,32 +293,40 @@ const parseSub = (text) => {
     newCleanTags.push(textTags)
   })
 
-  const lemmatizedWords = []
+  const lemmatizedWords = new Set()
   cleanLemmaTags.forEach((tagWord) => {
     const word = tagWord[0]
     const tags = tagWord[1] // tags là array chứa nhiều loại từ
     let lemma
 
     if (tags.includes('Verb')) {
-      // Nếu tags chứa 'Verb'
       lemma = lemmatizer.only_lemmas(word, 'verb')
     } else if (tags.includes('Noun')) {
-      // Nếu tags chứa 'Noun'
       lemma = lemmatizer.only_lemmas(word, 'noun')
     } else if (tags.includes('Adjective')) {
-      // Nếu tags chứa 'Adjective'
       lemma = lemmatizer.only_lemmas(word, 'adj')
     } else {
-      lemma = [word] // Giữ nguyên từ nếu không phải là động từ, danh từ hoặc tính từ
+      lemma = [word] // Giữ nguyên từ nếu không phải động từ, danh từ hoặc tính từ
     }
 
-    if (lemma.length > 1) lemma = [word]
-    lemmatizedWords.push(...lemma)
+    // Đảm bảo `lemma` là mảng, nếu không, chuyển nó thành mảng
+    if (!Array.isArray(lemma)) {
+      lemma = [lemma]
+    }
+
+    // Nếu `lemma` có nhiều hơn 1 phần tử, giữ lại từ gốc ban đầu
+    if (lemma.length > 1) {
+      lemma = [word]
+    }
+
+    // Thêm tất cả từ trong `lemma` vào `Set`
+    lemma.forEach((lem) => lemmatizedWords.add(lem))
   })
+
   return {
-    lemmatizedWords,
-    dictationWords: [...dictationWords],
-    tags: [...newCleanTags]
+    lemmatizedWords: [...lemmatizedWords], // Chuyển `Set` thành mảng
+    dictationWords: [...dictationWords], // Sao chép `dictationWords` thành mảng
+    tags: [...newCleanTags] // Sao chép `newCleanTags` thành mảng
   }
 }
 

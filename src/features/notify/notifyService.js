@@ -71,7 +71,14 @@ const updateNotify = async (id, dataFields) => {
   return updatedNotify
 }
 
+const deleteNotify = async (id) => {
+  const result = await notifyModel.findByIdAndDelete(id)
+  if (!result) throw new MyError('Thông báo không tồn tại!')
+  return result
+}
+
 const notifyService = {
+  deleteNotify,
   notifyComment,
   getUserNotifies,
   updateNotify,

@@ -32,7 +32,7 @@ const createNewDay = async (userId) => {
     if (expiredCount > 0) {
       await notifyModel.create({
         userId,
-        message: `Hôm nay bạn có ${expiredCount} từ vựng cần ôn tập!`,
+        message: `Hôm nay bạn có ${expiredCount} từ vựng có thể bạn đã quên!`,
         type: 'Word'
       })
     }

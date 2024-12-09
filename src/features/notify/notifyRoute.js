@@ -17,5 +17,11 @@ notifyRoute
     passport.authenticate('passport-jwt', { session: false }),
     notifyController.updateNotify
   )
+notifyRoute
+  .route('/:id')
+  .delete(
+    passport.authenticate('passport-jwt', { session: false }),
+    notifyController.deleteNotify
+  )
 
 export default notifyRoute
