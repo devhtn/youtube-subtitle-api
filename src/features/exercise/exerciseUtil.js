@@ -1,11 +1,14 @@
 import { translate } from '@vitalets/google-translate-api'
 import axios from 'axios'
 import nlp from 'compromise'
+import _ from 'lodash'
 import lemmatizer from 'node-lemmatizer'
 import { parseString } from 'xml2js'
-import ytdl from 'ytdl-core'
+import ytdlExec from 'youtube-dl-exec'
 
 import MyError from '~/utils/MyError'
+
+// import MyError from '~/utils/MyError'
 
 import oxfordData from './oxfordData.json'
 
@@ -121,118 +124,125 @@ const addTransText = async (videoInfo) => {
 }
 
 const getInfoVideo = async (videoId, level) => {
-  // Lấy thông tin videoInfo
-  const video = await ytdl.getInfo(videoId)
-  if (!video.player_response.captions)
-    throw new MyError('Video không có subtitles')
+  // Lấy thông tin video và phụ đề
+  const video = await ytdlExec(videoId, { dumpSingleJson: true })
+  if (_.isEmpty(video.subtitles)) throw new MyError('Video không có phụ đề!')
 
-  const videoDetails = video.videoDetails
-  if (level !== undefined && level < 1000 && videoDetails.lengthSeconds > 240)
-    throw new MyError('Cần đạt ít nhất level 1000 để xem video trên 4 phút')
-  if (videoDetails.lengthSeconds > 1200)
-    throw new MyError('Thời lượng không nên quá 20 phút')
-  const videoInfo = {}
+  if (video.duration > 1200)
+    throw new MyError('Video nên có thời lượng nhỏ hơn 20 phút!')
+  if (video.duration > 240 && level < 1000)
+    throw new MyError(
+      'Bạn cần đạt cấp độ 1000 để làm bài tập với video trên 4 phút!'
+    )
 
-  videoInfo.videoId = videoDetails.videoId
-  videoInfo.title = videoDetails.title
-  videoInfo.duration = videoDetails.lengthSeconds
-  videoInfo.thumbnails = videoDetails.thumbnails
-  videoInfo.category = videoDetails.category
-
-  const tracks =
-    video.player_response.captions.playerCaptionsTracklistRenderer.captionTracks
-
-  // Đoạn này tìm loại ngôn ngữ tự động tạo trong danh sách subtitles
-  // const asrTrack = tracks.find((track) => track.kind === 'asr')
-  // if (asrTrack && !asrTrack.languageCode.startsWith('en'))
-  //   throw new MyError(
-  //     `Không hỗ trợ video tiếng ${asrTrack.name.simpleText.replace(/\s*\([^)]*\)/g, '').trim()} `
-  //   )
-
-  let subtitleTrack = tracks.find(
-    (track) => track.languageCode.startsWith('en') && track.kind !== 'asr'
-  )
-  //
-  if (subtitleTrack) {
-    const subtitleUrl = subtitleTrack.baseUrl
-    // Tải phụ đề XML
-    const response = await axios.get(subtitleUrl)
-    const xmlData = await response.data
-
-    // Chuyển đổi XML sang JSON
-    return new Promise((resolve, reject) => {
-      parseString(xmlData, (err, result) => {
-        if (err) {
-          reject('Error parsing XML: ' + err)
-        } else {
-          const subtitles = result.transcript.text
-
-          const segments = []
-          let textsToTranslate = ''
-          // Khởi tạo các Set để lưu trữ từ duy nhất và các biến đếm
-          let lemmaWordsSet = new Set()
-          let totalDictationWords = 0
-          let totalTime = 0
-          let totalWords = 0
-          for (let i = 0; i < subtitles.length; i++) {
-            const text = subtitles[i]._.replace(/\n/g, ' ')
-              .replace(/[([*].*?[)\]*]/g, '')
-              .replace(/&#39;/g, "'")
-              .replace(/&quot;/g, '"')
-              .replace(/&lt;br&gt;/g, '')
-              .replace(/\s+/g, ' ') // Thay thế các khoảng trắng đặc biệt
-              .replace(/’/g, "'") // Đổi tất cả dấu nháy móc thành nháy thẳng
-              .replace(/([^\s])([!?])/g, '$1 $2') // Thêm khoảng trắng trước dấu ! hoặc ?
-              .trim() // Loại bỏ khoảng trắng ở đầu và cuối
-            if (!text) continue
-            textsToTranslate += text + (i < subtitles.length - 1 ? '\n' : '')
-            const start = subtitles[i].$.start
-            const dur = subtitles[i].$.dur
-            const end = (parseFloat(start) + parseFloat(dur)).toFixed(3)
-
-            const { lemmatizedWords, dictationWords, tags } =
-              exerciseUtil.parseSub(text)
-            lemmatizedWords.forEach((word) => lemmaWordsSet.add(word))
-            totalDictationWords += dictationWords.length
-            // Tính thời gian và số từ
-            if (dur > 0) {
-              totalTime += parseFloat(dur)
-              totalWords += tags.length
-            }
-
-            segments.push({
-              start,
-              end,
-              text,
-              lemmaSegmentWords: lemmatizedWords,
-              dictationWords,
-              tags
-            })
-          }
-          // Kiểm tra nếu segments rỗng
-          if (segments.length === 0) {
-            reject(new MyError('Phụ đề của video không hợp lệ!'))
-          } else {
-            videoInfo.segments = segments
-            videoInfo.textsToTranslate = textsToTranslate
-            videoInfo.avgSpeed =
-              totalTime > 0 ? ((totalWords * 60) / totalTime).toFixed(0) : 0
-            videoInfo.totalDictationWords = totalDictationWords
-            videoInfo.lemmaWords = Array.from(lemmaWordsSet)
-
-            // Tạo danh sách đối chiếu từ vựng với `wordLists`
-            videoInfo.difficult =
-              lemmaWordsSet.size -
-              exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordData.words)
-
-            resolve(videoInfo) // Trả về JSON
-          }
-        }
-      })
-    })
-  } else {
-    throw new MyError('Video không có phụ đề!')
+  const videoInfo = {
+    videoId: video.id,
+    title: video.title,
+    duration: video.duration,
+    thumbnails: [null, null, null, video.thumbnails[33]],
+    category: video.categories[0]
   }
+
+  let subtitleUrl = null
+
+  if (video.subtitles?.en?.[1]?.url) {
+    // Nếu có thuộc tính 'en' và có ít nhất một subtitle (với url)
+    subtitleUrl = video.subtitles.en[1].url
+  } else if (video.subtitles?.['en-GB']?.[1]?.url) {
+    // Nếu không có 'en' nhưng có 'en-GB' và ít nhất một subtitle (với url)
+    subtitleUrl = video.subtitles['en-GB'][1].url
+  }
+  if (!subtitleUrl) throw new MyError('Video không hỗ phụ đề tiếng Anh!')
+
+  const response = await axios.get(subtitleUrl)
+  const xmlData = await response.data
+
+  return new Promise((resolve, reject) => {
+    parseString(xmlData, (err, result) => {
+      if (err) {
+        reject('Error parsing XML: ' + err)
+      } else {
+        const subtitles = result.transcript.text
+
+        // Kiểm tra subtitle cuối cùng ngay lập tức
+        const lastSubtitle = subtitles[subtitles.length - 1]
+        const lastStart = parseFloat(lastSubtitle.$.start)
+        const lastDur = parseFloat(lastSubtitle.$.dur)
+        const lastEnd = (lastStart + lastDur).toFixed(3)
+
+        // Kiểm tra nếu thời gian kết thúc của subtitle cuối cùng vượt quá duration của video
+        if (parseFloat(lastEnd) > video.duration) {
+          reject(
+            new MyError(
+              'Phụ đề bị lỗi, thời gian kết thúc của subtitle vượt quá thời gian video!'
+            )
+          )
+          return
+        }
+
+        const segments = []
+        let textsToTranslate = ''
+        // Khởi tạo các Set để lưu trữ từ duy nhất và các biến đếm
+        let lemmaWordsSet = new Set()
+        let totalDictationWords = 0
+        let totalTime = 0
+        let totalWords = 0
+        for (let i = 0; i < subtitles.length; i++) {
+          const text = subtitles[i]._.replace(/\n/g, ' ')
+            .replace(/(\(.*?\)|\[.*?\]|\*\*.*?\*\*|<.*?>)/g, '')
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/&lt;br&gt;/g, '')
+            .replace(/\s+/g, ' ') // Thay thế các khoảng trắng đặc biệt
+            .replace(/’/g, "'") // Đổi tất cả dấu nháy móc thành nháy thẳng
+            .replace(/([^\s])([!?])/g, '$1 $2') // Thêm khoảng trắng trước dấu ! hoặc ?
+            .trim() // Loại bỏ khoảng trắng ở đầu và cuối
+          if (/^[^a-zA-Z0-9]*$/.test(text)) continue
+          textsToTranslate += text + (i < subtitles.length - 1 ? '\n' : '')
+          const start = subtitles[i].$.start
+          const dur = subtitles[i].$.dur
+          const end = (parseFloat(start) + parseFloat(dur)).toFixed(3)
+
+          const { lemmatizedWords, dictationWords, tags } =
+            exerciseUtil.parseSub(text)
+          lemmatizedWords.forEach((word) => lemmaWordsSet.add(word))
+          totalDictationWords += dictationWords.length
+          // Tính thời gian và số từ
+          if (dur > 0) {
+            totalTime += parseFloat(dur)
+            totalWords += tags.length
+          }
+
+          segments.push({
+            start,
+            end,
+            text,
+            lemmaSegmentWords: lemmatizedWords,
+            dictationWords,
+            tags
+          })
+        }
+        // Kiểm tra nếu segments rỗng
+        if (segments.length === 0) {
+          reject(new MyError('Phụ đề của video không hợp lệ!'))
+        } else {
+          videoInfo.segments = segments
+          videoInfo.textsToTranslate = textsToTranslate
+          videoInfo.avgSpeed =
+            totalTime > 0 ? ((totalWords * 60) / totalTime).toFixed(0) : 0
+          videoInfo.totalDictationWords = totalDictationWords
+          videoInfo.lemmaWords = Array.from(lemmaWordsSet)
+
+          // Tạo danh sách đối chiếu từ vựng với `wordLists`
+          videoInfo.difficult =
+            lemmaWordsSet.size -
+            exerciseUtil.calcWordMatch(videoInfo.lemmaWords, oxfordData.words)
+
+          resolve(videoInfo) // Trả về JSON
+        }
+      }
+    })
+  })
 }
 
 const parseSub = (text) => {

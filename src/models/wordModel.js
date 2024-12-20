@@ -11,24 +11,30 @@ const wordSchema = new mongoose.Schema(
     },
     word: {
       type: String,
-      required: true,
-      unique: true
+      required: true
     },
     level: {
       type: Number,
       default: 1
     },
-    startAt: {
-      type: Number,
-      required: true
-    },
     expired: {
       type: Boolean,
       default: false
+    },
+    start: {
+      type: Number
     }
   },
   modelConfig
 )
+
+// Middleware để gán `start` là thời gian tạo
+wordSchema.pre('save', function (next) {
+  if (!this.start) {
+    this.start = Date.now() // Gán `start` bằng timestamp hiện tại
+  }
+  next()
+})
 
 const wordModel = mongoose.model('Word', wordSchema)
 export default wordModel

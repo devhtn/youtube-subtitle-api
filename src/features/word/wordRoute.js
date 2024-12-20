@@ -17,5 +17,11 @@ wordRoute
     passport.authenticate('passport-jwt', { session: false }),
     wordController.getForgetWords
   )
+wordRoute
+  .route('/level')
+  .get(
+    passport.authenticate('passport-jwt', { session: false }),
+    wordController.getLevelWords
+  )
 
 export default wordRoute

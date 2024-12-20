@@ -4,6 +4,7 @@ import notifyService from '../notify/notifyService'
 import commentModel from '~/models/commentModel'
 import exerciseModel from '~/models/exerciseModel'
 import userModel from '~/models/userModel'
+import { sendMessageToUser } from '~/socket'
 
 const getExerciseComments = async (exerciseId, query = {}) => {
   let filter = { exerciseId, parentId: null }
@@ -69,6 +70,7 @@ const toggleLikeComment = async (commentId, userId) => {
     })
     .populate('mentionUserId', 'name')
 
+  sendMessageToUser(updatedComment.userId.id, 'likecomment', updatedComment)
   return updatedComment
 }
 

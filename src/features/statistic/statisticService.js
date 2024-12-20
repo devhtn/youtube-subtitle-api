@@ -17,9 +17,13 @@ const createNewDay = async (userId) => {
     day: today
   })
 
-  const { expiredCount, levelWords } = await wordService.refreshWords(userId)
+  let notifyExpired = null
+  let levelWords = []
 
   if (!day) {
+    const { expiredCount, levelWords: newLevelWords } =
+      await wordService.refreshWords(userId)
+    levelWords = newLevelWords
     // Nếu chưa tồn tại, tạo document mới
     const newDayRecord = new studyStatisticModel({
       userId,
@@ -29,15 +33,17 @@ const createNewDay = async (userId) => {
     await newDayRecord.save()
 
     // Thông báo từ vựng đã quên mỗi ngày
+
     if (expiredCount > 0) {
-      await notifyModel.create({
+      notifyExpired = await notifyModel.create({
         userId,
         message: `Hôm nay bạn có ${expiredCount} từ vựng có thể bạn đã quên!`,
         type: 'Word'
       })
     }
-  }
-  return { expiredCount, levelWords }
+  } else levelWords = await wordService.getLevelWords(userId)
+
+  return { levelWords, notifyExpired }
 }
 
 const updateDay = async (userId, dataFields = {}) => {
